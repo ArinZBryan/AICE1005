@@ -315,13 +315,13 @@ void DTree::split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, D
 	std::shared_ptr<DecisionNode> new_node_ptr = std::make_shared<DecisionNode>((DTree&)*this, dataFrameField, comparison, compareAgainst);
 	DecisionNode* new_node = new_node_ptr.get();
 	ValueNode* old_node = leaf.get();
-	if (old_node->parent.lock().get()->left_child.lock() == leaf) {
+	if (old_node->parent.lock()->left_child.lock() == leaf) {
 		//Replacing a left child
-		old_node->parent.lock().get()->left_child = new_node_ptr;
+		old_node->parent.lock()->left_child = new_node_ptr;
 	}
 	else {
 		//Replacing a right child
-		old_node->parent.lock().get()->right_child = new_node_ptr;
+		old_node->parent.lock()->right_child = new_node_ptr;
 	}
 	nodes.erase(leaf); //Remove the 'owning' shared_pointer, so any remaining ones can decay away and the node is deallocated.
 	nodes.insert(new_node_ptr);

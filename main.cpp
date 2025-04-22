@@ -140,8 +140,13 @@ struct SplitDetails {
     } comparison;
 };
 
-std::vector<struct SplitDetails> findBestSplits(DTree::ValueNode src, double(*evaluationFunction)(std::vector<DataFrame>)) {
-    
+std::vector<struct SplitDetails> findBestSplits(DTree::ValueNode src, double(*evaluationFunction)(std::vector<DataFrame>), unsigned int samples, bool allowIntEquals) {
+    const std::vector<DataFrame>& data = src.getEncompassedData();
+    if (data.size() == 0) { return {}; }
+    size_t df_fields = data[0].fields.size();
+    for (size_t i = 0; i < df_fields; i++) {
+
+    }
 };
 
 int main()
