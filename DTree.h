@@ -49,7 +49,7 @@ public:
         DecisionNode(DTree& tree);
         DecisionNode(std::weak_ptr<DTree::Node> parent);
 
-        DecisionNode(DTree& tree, size_t dataFrameField, enum DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
+        DecisionNode(DTree& tree, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
         bool decide(DataFrame value);
         std::string toString();
 
@@ -77,6 +77,8 @@ public:
     std::string to_string();
 
     void split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
+
+    size_t max_depth();
 
     DTree(std::vector<DataFrame> data_points);
 

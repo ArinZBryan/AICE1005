@@ -30,8 +30,8 @@ DTree::Node::Node(std::weak_ptr<DTree::Node> parent) : parent(parent), tree(pare
 DTree::Node::~Node() = default;
 std::string DTree::Node::toString() { return "Node"; };
 
-DTree::DecisionNode::DecisionNode(DTree& tree) : Node(tree) {};
-DTree::DecisionNode::DecisionNode(std::weak_ptr<DTree::Node> parent) : Node(parent) {};
+DTree::DecisionNode::DecisionNode(DTree& tree) : Node(tree), comparison(lessThan) {};
+DTree::DecisionNode::DecisionNode(std::weak_ptr<DTree::Node> parent) : Node(parent), comparison(lessThan) {};
 DTree::DecisionNode::DecisionNode(DTree& tree, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst)
 : Node(tree), dataFrameField(dataFrameField), comparison(comparison), compareAgainst(compareAgainst) {}
 bool DTree::DecisionNode::decide(DataFrame value) { 
@@ -336,4 +336,15 @@ void DTree::split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, D
 	nodes.erase(leaf); //Remove the 'owning' shared_pointer, so any remaining ones can decay away and the node is deallocated.
 	nodes.insert(new_node_ptr);
 };
-	
+size_t DTree::max_depth() {
+	std::queue<std::pair<std::weak_ptr<DTree::Node>, size_t>> toCheck({ {this->head, 0} });
+	size_t max_depth = 0;
+	while (toCheck.size() > 0) {
+		std::pair<std::weak_ptr<DTree::Node>, size_t> cur = toCheck.front();
+		toCheck.pop();
+		if (!cur.first.lock()->left_child.expired()) { toCheck.push({ cur.first.lock()->left_child, cur.second + 1 }); }
+		if (!cur.first.lock()->right_child.expired()) { toCheck.push({ cur.first.lock()->right_child, cur.second + 1 }); }
+		if (cur.second > max_depth) { max_depth = cur.second; }
+	}
+	return max_depth;
+}
