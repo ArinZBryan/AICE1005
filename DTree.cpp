@@ -1,5 +1,15 @@
 ﻿#include "DTree.h"
 
+bool DataFrame::lt(const DataFrame& other, size_t field) const {
+	if (std::holds_alternative<int>(this->fields[field])) {
+		return std::get<int>(this->fields[field]) < std::get<int>(other.fields[field]);
+	}
+	else if (std::holds_alternative<float>(this->fields[field])) {
+		return std::get<float>(this->fields[field]) < std::get<float>(other.fields[field]);
+	}
+	return false;
+}
+
 std::ostream& operator<<(std::ostream& os, const DataFrame& df) {
 	os << df.label << ":";
 

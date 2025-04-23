@@ -17,6 +17,7 @@
 struct DataFrame {
     std::string label;
     std::vector<std::variant<int, float>> fields;
+    bool lt(const DataFrame& other, size_t field) const;
 };
 
 std::ostream& operator<<(std::ostream& os, const DataFrame& df);
