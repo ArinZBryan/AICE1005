@@ -1,8 +1,9 @@
-#include <iostream>
+﻿#include <iostream>
 #include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
+#include <queue>
 #include <filesystem>
 #include <cctype>
 #include <algorithm>
@@ -10,9 +11,15 @@
 #include <math.h>
 #include "DTree.h"
 
+// Oh yeah. We're totally doing this.
+#include <omp.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // Like strtok from c stdlib, but for std::string
-std::vector<std::string> strtokstr(std::string s, char sep) {
+static std::vector<std::string> strtokstr(std::string s, char sep) {
     std::vector<std::string> ret;
     std::stringstream token;
     for (size_t i = 0; i < s.length(); i++) {
@@ -23,7 +30,7 @@ std::vector<std::string> strtokstr(std::string s, char sep) {
     return ret;
 }
 
-std::vector<DataFrame> loadFile(size_t label, std::filesystem::path path) {
+static std::vector<DataFrame> loadFile(size_t label, std::filesystem::path path) {
     if (!std::filesystem::exists(path) || !std::filesystem::is_regular_file(path)) {
         std::cerr << "Could Not Read File" << std::endl;
     }
@@ -41,12 +48,12 @@ std::vector<DataFrame> loadFile(size_t label, std::filesystem::path path) {
             std::string token = tokens[i];
             if (i == label) {
                 df.label = token;
-            } else if (token.contains(".")) {
+            } else if (token.find(".") != std::string::npos) {
                 df.fields.push_back(strtof(token.c_str(), nullptr));
             }
             else {
                 bool alpha = false;
-                for (size_t iter = token.length(); iter < token.length() && !alpha; iter++) { alpha |= isalpha(token[iter]); }
+                for (size_t iter = token.length(); iter < token.length() && !alpha; iter++) { alpha |= static_cast<bool>(isalpha(token[iter])); }
                 if (alpha) { df.label = token; }
                 else { df.fields.push_back(strtol(token.c_str(), nullptr, 10)); }
             }
@@ -57,7 +64,7 @@ std::vector<DataFrame> loadFile(size_t label, std::filesystem::path path) {
     return ret;
 }
 
-std::string DTreeClassify(const DTree& tree, DataFrame df) {  
+static std::string DTreeClassify(const DTree& tree, DataFrame df) {  
    if (std::shared_ptr<DTree::DecisionNode> head = std::dynamic_pointer_cast<DTree::DecisionNode>(tree.head.lock())) {  
        std::shared_ptr<DTree::Node> cur = head;
        while (cur.get()->left_child.expired() || cur.get()->right_child.expired()) {
@@ -75,10 +82,10 @@ std::string DTreeClassify(const DTree& tree, DataFrame df) {
    return "How did you even get here?";
 }
 
-double entropy(std::vector<DataFrame> data) {
+static double entropy(std::vector<DataFrame> data) {
     std::map<std::string, int> set_frequencies;
-    for (DataFrame df : data) {
-        if (set_frequencies.contains(df.label)) {
+    for (const DataFrame& df : data) {
+        if (set_frequencies.find(df.label) != set_frequencies.end()) {
             set_frequencies[df.label]++;
         }
         else {
@@ -93,10 +100,10 @@ double entropy(std::vector<DataFrame> data) {
     return -entropy;
 }
 
-double giniImpurity(std::vector<DataFrame> data) {
+static double giniImpurity(std::vector<DataFrame> data) {
     std::map<std::string, int> set_frequencies;
-    for (DataFrame df : data) {
-        if (set_frequencies.contains(df.label)) {
+    for (const DataFrame& df : data) {
+        if (set_frequencies.find(df.label) != set_frequencies.end()) {
             set_frequencies[df.label]++;
         }
         else {
@@ -111,7 +118,7 @@ double giniImpurity(std::vector<DataFrame> data) {
     return 1 - gini_impurity;
 }
 
-double evaluateSplit(std::shared_ptr<DTree::ValueNode> toSplit, DTree::DecisionNode::comparisonType comparisonType, size_t comparisonField, std::variant<int, float> compareAgainst, double(*minimiseFunc)(std::vector<DataFrame>)) {
+static double evaluateSplit(std::shared_ptr<DTree::ValueNode> toSplit, DTree::DecisionNode::comparisonType comparisonType, size_t comparisonField, std::variant<int, float> compareAgainst, double(*minimiseFunc)(std::vector<DataFrame>)) {
     const std::vector<DataFrame>& data = toSplit->getEncompassedData();
     std::vector<DataFrame> data_a;
     std::vector<DataFrame> data_b;
@@ -191,7 +198,15 @@ struct SplitDetails {
     }
 };
 
-std::ostream& operator<<(std::ostream& os, const SplitDetails& sd) {
+struct NodeSplitDetails {
+    struct SplitDetails first;
+    std::weak_ptr<DTree::ValueNode> second;
+    bool operator<(const NodeSplitDetails& other) const {
+        return this->first.purity < other.first.purity;
+    }
+};
+
+static std::ostream& operator<<(std::ostream& os, const SplitDetails& sd) {
     os << "{purity: " << sd.purity << " split: [" << sd.comparison.df_field << "]";
     switch (sd.comparison.type) {
     case DTree::DecisionNode::comparisonType::equal: os << " = "; break;
@@ -203,98 +218,170 @@ std::ostream& operator<<(std::ostream& os, const SplitDetails& sd) {
     return os;
 }
 
-std::vector<struct SplitDetails> findBestSplits(
-    std::shared_ptr<DTree::ValueNode> src, 
-    double(*evaluationFunction)(std::vector<DataFrame>), 
-    unsigned int samples, 
-	bool continuousInts = false,
+
+// This function, based on some preliminary profiling runs 2.3x faster due to utilising OpenMP
+// to multithread the main for loop. And it was so much easier to make work than python 
+// multithreading! Yipee!
+static std::priority_queue<struct SplitDetails> findBestSplits(
+    std::shared_ptr<DTree::ValueNode> src,
+    double(*evaluationFunction)(std::vector<DataFrame>),
+    unsigned int samples,
+    bool continuousInts = false,
     bool useGreaterThan = false
 ) {
     const std::vector<DataFrame>& data = src->getEncompassedData();
     if (data.size() == 0) { return {}; }
     size_t df_fields = data[0].fields.size();
-	std::vector<struct SplitDetails> ret;
-    // Consider vectorising this with openmp (Configuration Options > C/C++ > Language > OpenMP Support)
-    for (size_t field_index = 0; field_index < df_fields; field_index++) {
-        // Partial application provided by the standard library? Functional C++? How many souls had to be
-        // sacrificed to the C++ gods for me to have this?
+
+    // Create thread-local priority queues to avoid race conditions
+    std::vector<std::priority_queue<struct SplitDetails>> thread_queues(omp_get_max_threads());
+
+    // Parallelize the loop over field indices
+#pragma omp parallel for
+    for (int field_index = 0; field_index < df_fields; field_index++) {
+        // Get the thread-local queue for this thread
+        int thread_id = omp_get_thread_num();
+        auto& local_queue = thread_queues[thread_id];
+
         std::vector<DataFrame> temp_copy = data;
-		auto comparator = std::bind(&DataFrame::lt, std::placeholders::_1, std::placeholders::_2, field_index);
-		auto min_max_elements = std::minmax_element(temp_copy.begin(), temp_copy.end(), comparator);
-		if (min_max_elements.first == min_max_elements.second) { 
-			ret.push_back({ 1.0, { DTree::DecisionNode::comparisonType::equal, field_index, min_max_elements.first->fields[field_index] } });
-			continue;
+        auto comparator = std::bind(&DataFrame::lt, std::placeholders::_1, std::placeholders::_2, field_index);
+        auto min_max_elements = std::minmax_element(temp_copy.begin(), temp_copy.end(), comparator);
+
+        if (min_max_elements.first == min_max_elements.second) {
+            local_queue.push({ 1.0, { DTree::DecisionNode::comparisonType::equal, static_cast<size_t>(field_index), min_max_elements.first->fields[field_index] } });
+            continue;
         }
+
         if (!continuousInts && std::holds_alternative<int>(temp_copy[0].fields[field_index])) {
             // Ignore the samples parameter - we'll just check all the value we know about.
-			for (int j = std::get<int>(min_max_elements.first->fields[field_index]); j <= std::get<int>(min_max_elements.second->fields[field_index]); j++) {
-			    ret.push_back({ evaluateSplit(src, DTree::DecisionNode::comparisonType::equal, field_index, j, evaluationFunction), { DTree::DecisionNode::comparisonType::equal, field_index, j } });
-			}
+            for (int j = std::get<int>(min_max_elements.first->fields[field_index]); j <= std::get<int>(min_max_elements.second->fields[field_index]); j++) {
+                local_queue.push({ evaluateSplit(src, DTree::DecisionNode::comparisonType::equal, static_cast<size_t>(field_index), j, evaluationFunction), { DTree::DecisionNode::comparisonType::equal, static_cast<size_t>(field_index), j } });
+            }
         }
         else {
             if (std::holds_alternative<int>(temp_copy[0].fields[field_index])) {
                 // Try to find the right number of samples, but might not find that many
                 int diff = std::get<int>(min_max_elements.second->fields[field_index]) - std::get<int>(min_max_elements.first->fields[field_index]);
-				std::set<int> samples_set;
+                std::set<int> samples_set;
                 for (unsigned int j = 0; j < samples; j++) {
-                    int sample = roundf(std::get<int>(min_max_elements.first->fields[field_index]) + diff * (static_cast<float>(j) / static_cast<float>(samples)));
+                    int sample = static_cast<int>(roundf(std::get<int>(min_max_elements.first->fields[field_index]) + diff * (static_cast<float>(j) / static_cast<float>(samples))));
                     samples_set.insert(sample);
                 }
                 if (useGreaterThan) {
                     for (int sample : samples_set) {
-                        ret.push_back({ evaluateSplit(src, DTree::DecisionNode::comparisonType::greaterThan, field_index, sample, evaluationFunction), { DTree::DecisionNode::comparisonType::greaterThan, field_index, sample } });
+                        local_queue.push({ evaluateSplit(src, DTree::DecisionNode::comparisonType::greaterThan, static_cast<size_t>(field_index), sample, evaluationFunction), { DTree::DecisionNode::comparisonType::greaterThan, static_cast<size_t>(field_index), sample } });
                     }
                 }
                 else {
                     for (int sample : samples_set) {
-                        ret.push_back({ evaluateSplit(src, DTree::DecisionNode::comparisonType::lessThan, field_index, sample, evaluationFunction), { DTree::DecisionNode::comparisonType::lessThan, field_index, sample } });
+                        local_queue.push({ evaluateSplit(src, DTree::DecisionNode::comparisonType::lessThan, static_cast<size_t>(field_index), sample, evaluationFunction), { DTree::DecisionNode::comparisonType::lessThan, static_cast<size_t>(field_index), sample } });
                     }
                 }
-                
             }
-            else if (std::holds_alternative<float>(temp_copy[0].fields[1])) {
+            else if (std::holds_alternative<float>(temp_copy[0].fields[field_index])) {
                 float diff = std::get<float>(min_max_elements.second->fields[field_index]) - std::get<float>(min_max_elements.first->fields[field_index]);
                 if (useGreaterThan) {
                     for (unsigned int j = 0; j < samples; j++) {
                         float sample = std::get<float>(min_max_elements.first->fields[field_index]) + diff * (static_cast<float>(j) / static_cast<float>(samples));
-                        ret.push_back({ evaluateSplit(src, DTree::DecisionNode::comparisonType::greaterThan, field_index, sample, evaluationFunction), { DTree::DecisionNode::comparisonType::greaterThan, field_index, sample } });
+                        local_queue.push({ evaluateSplit(src, DTree::DecisionNode::comparisonType::greaterThan, static_cast<size_t>(field_index), sample, evaluationFunction), { DTree::DecisionNode::comparisonType::greaterThan, static_cast<size_t>(field_index), sample } });
                     }
                 }
                 else {
                     for (unsigned int j = 0; j < samples; j++) {
                         float sample = std::get<float>(min_max_elements.first->fields[field_index]) + diff * (static_cast<float>(j) / static_cast<float>(samples));
-                        ret.push_back({ evaluateSplit(src, DTree::DecisionNode::comparisonType::lessThan, field_index, sample, evaluationFunction), { DTree::DecisionNode::comparisonType::lessThan, field_index, sample } });
+                        local_queue.push({ evaluateSplit(src, DTree::DecisionNode::comparisonType::lessThan, static_cast<size_t>(field_index), sample, evaluationFunction), { DTree::DecisionNode::comparisonType::lessThan, static_cast<size_t>(field_index), sample } });
                     }
                 }
-                
             }
         }
     }
-    std::sort(ret.begin(), ret.end());
+
+    // Merge all thread-local queues into the final result queue
+    std::priority_queue<struct SplitDetails> ret;
+    for (auto& local_queue : thread_queues) {
+        while (!local_queue.empty()) {
+            ret.push(local_queue.top());
+            local_queue.pop();
+        }
+    }
+
     return ret;
-};
+}
+
+static DTree trainDTree(
+    std::vector<DataFrame> data, 
+    double(*evaluationFunction)(std::vector<DataFrame>),
+    unsigned int samples,
+    bool continuousInts = false,
+    bool useGreaterThan = false,
+    int limiting_decisions = 4, 
+    int limiting_depth = -1
+) {
+    DTree tree(data);
+    if (limiting_decisions > 0) {
+        std::priority_queue<NodeSplitDetails> splits;
+        for (int i = 0; i < limiting_decisions; i++) {
+            for (auto leaf : tree.get_leaves()) {
+                if (!leaf.expired()) {
+                    auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
+                    if (best_splits.size() == 0) {
+                        continue;
+                    }
+                    splits.push({ best_splits.top(), leaf });
+                }
+                else {
+                    std::cerr << "Attempted to access empty leaf" << std::endl;
+                }
+            }
+            auto split = splits.top(); 
+            splits.pop();
+            while (split.second.expired()) { 
+                split = splits.top(); 
+                splits.pop(); 
+            }
+
+            tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+        }
+        return tree;
+    }
+    else if (limiting_depth > 0) {
+        std::priority_queue<NodeSplitDetails> splits;
+        while (tree.max_depth() <= limiting_depth) {
+            for (auto leaf : tree.get_leaves()) {
+                auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
+                splits.push({ best_splits.top(), leaf });
+            }
+            auto split = splits.top(); splits.pop();
+            while (split.second.expired()) { split = splits.top(); splits.pop(); }
+            tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+        }
+        return tree;
+    }
+    else {
+        return tree;
+    }
+}
 
 int main()
 {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE),
+        ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#else
+    std::locale::global(std::locale("en_US.UTF-8"));
+    std::cout.imbue(std::locale());
+#endif
+
     std::vector<DataFrame> dfs = loadFile(10, "C:\\Users\\arinb\\OneDrive\\Documents\\Computer_Engineering\\Coursework\\AICE1005\\training.dat");
     std::cout << "Loaded " << dfs.size() << " DataFrames from file." << std::endl;
-    auto tree = DTree(dfs);
     
-    std::cout << "Gini Impurity: " << giniImpurity(std::dynamic_pointer_cast<DTree::ValueNode>(tree.head.lock()).get()->getEncompassedData()) << std::endl;
-    std::cout << "Entropy: " << entropy(std::dynamic_pointer_cast<DTree::ValueNode>(tree.head.lock()).get()->getEncompassedData()) << std::endl;
+    std::cout << "Gini Impurity: " << giniImpurity(dfs) << std::endl;
+    std::cout << "Entropy: " << entropy(dfs) << std::endl;
     
-    std::vector<struct SplitDetails> splits = findBestSplits(
-        std::dynamic_pointer_cast<DTree::ValueNode>(tree.head.lock()), 
-        entropy, 
-        2, 
-        true, 
-        true
-    );
+    DTree tree = trainDTree(dfs, entropy, 2, false, false, 8, -1);
 
-    std::cout << "Evaluated " << splits.size() << " split(s)" << std::endl;
-
-    for (const struct SplitDetails& sd : splits) {
-        std::cout << sd << std::endl;
-    }
+    //std::cout << tree.to_string();
 }
 

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <set>
 #include <memory>
 #include <optional>
@@ -14,10 +14,17 @@
 #include <algorithm>
 #include <cmath>
 
+
+// TODO: See if we can reduce the use of the copy constructor DataFrame::DataFrame(const DataFrame&).
+//       It's still taking 10-20% of all runtime :( - I think most of its use seems to be in constructing
+//       vectors, but I don't know if that's avoidable.
 struct DataFrame {
     std::string label;
     std::vector<std::variant<int, float>> fields;
     bool lt(const DataFrame& other, size_t field) const;
+    DataFrame() = default;
+    DataFrame(const DataFrame&) = default;
+    DataFrame(DataFrame&&) = default;
 };
 
 std::ostream& operator<<(std::ostream& os, const DataFrame& df);
@@ -50,7 +57,7 @@ public:
         DecisionNode(std::weak_ptr<DTree::Node> parent);
 
         DecisionNode(DTree& tree, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
-        bool decide(DataFrame value);
+        bool decide(DataFrame value) const;
         std::string toString();
 
     };
@@ -74,11 +81,13 @@ public:
         std::string toString();
     };
 
-    std::string to_string();
+    std::string to_string() const;
 
     void split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
 
     size_t max_depth();
+
+    std::vector<std::weak_ptr<DTree::ValueNode>> get_leaves();
 
     DTree(std::vector<DataFrame> data_points);
 

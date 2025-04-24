@@ -25,8 +25,8 @@ std::ostream& operator<<(std::ostream& os, const DataFrame& df) {
 	return os;
 }
 
-DTree::Node::Node(DTree& tree) : tree(tree) {}
-DTree::Node::Node(std::weak_ptr<DTree::Node> parent) : parent(parent), tree(parent.lock()->tree) {}
+DTree::Node::Node(DTree& tree) : tree(tree), left_child(), right_child() {}
+DTree::Node::Node(std::weak_ptr<DTree::Node> parent) : parent(parent), tree(parent.lock()->tree), left_child(), right_child() {}
 DTree::Node::~Node() = default;
 std::string DTree::Node::toString() { return "Node"; };
 
@@ -34,7 +34,7 @@ DTree::DecisionNode::DecisionNode(DTree& tree) : Node(tree), comparison(lessThan
 DTree::DecisionNode::DecisionNode(std::weak_ptr<DTree::Node> parent) : Node(parent), comparison(lessThan) {};
 DTree::DecisionNode::DecisionNode(DTree& tree, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst)
 : Node(tree), dataFrameField(dataFrameField), comparison(comparison), compareAgainst(compareAgainst) {}
-bool DTree::DecisionNode::decide(DataFrame value) { 
+bool DTree::DecisionNode::decide(DataFrame value) const { 
 	bool ret = false;
 	if (this->comparison == equal) {
 		return this->compareAgainst == value.fields[dataFrameField];
@@ -77,7 +77,9 @@ std::string DTree::ValueNode::modeLabel() {
 	for (std::pair<std::string, int> e : res) {
 		if (e.second > max.second) { max = e; }
 	}
-	return max.first;
+	std::stringstream ret;
+	ret << max.first << " " << static_cast<float>(max.second) / static_cast<float>(this->encompassedData.size()) * 100.0 << "%";
+	return ret.str();
 }
 std::map<std::string, int> DTree::ValueNode::proportionedLabel() {
 	std::map<std::string, int> res;
@@ -98,15 +100,15 @@ DTree::DTree(std::vector<DataFrame> data_points) {
 	this->head = new_node;
 	this->nodes.insert(new_node);
 }
-std::string DTree::to_string() {
+std::string DTree::to_string() const {
 	std::stringstream out;
 
-	const std::string HBEAM = "━";
-	const std::string TBEAM = "┻";
-	const std::string RDBEAM = "┓";
-	const std::string LDBEAM = "┏";
-	const std::string RUBEAM = "┛";
-	const std::string LUBEAM = "┗";
+	const std::string HBEAM = std::string(reinterpret_cast<const char*>(u8"━"));
+	const std::string TBEAM = std::string(reinterpret_cast<const char*>(u8"┻"));
+	const std::string RDBEAM = std::string(reinterpret_cast<const char*>(u8"┓"));
+	const std::string LDBEAM = std::string(reinterpret_cast<const char*>(u8"┏"));
+	const std::string RUBEAM = std::string(reinterpret_cast<const char*>(u8"┛"));
+	const std::string LUBEAM = std::string(reinterpret_cast<const char*>(u8"┗"));
 
 	auto root = this->head.lock();
 
@@ -322,19 +324,38 @@ std::string DTree::to_string() {
 	return out.str();
 }
 void DTree::split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst) {
-	std::shared_ptr<DecisionNode> new_node_ptr = std::make_shared<DecisionNode>((DTree&)*this, dataFrameField, comparison, compareAgainst);
-	DecisionNode* new_node = new_node_ptr.get();
-	ValueNode* old_node = leaf.get();
-	if (old_node->parent.lock()->left_child.lock() == leaf) {
-		//Replacing a left child
-		old_node->parent.lock()->left_child = new_node_ptr;
+	std::shared_ptr<DecisionNode> new_decision_node = std::make_shared<DecisionNode>((DTree&)*this, dataFrameField, comparison, compareAgainst);
+	std::vector<DataFrame> new_data_a;
+	std::vector<DataFrame> new_data_b;
+
+	for (DataFrame df : leaf->getEncompassedData()) {
+		if (new_decision_node->decide(df)) {
+			new_data_a.push_back(std::move(df));
+		}
+		else {
+			new_data_b.push_back(std::move(df));
+		}
 	}
-	else {
-		//Replacing a right child
-		old_node->parent.lock()->right_child = new_node_ptr;
+
+	std::shared_ptr<ValueNode> new_value_node_a = std::make_shared<ValueNode>(new_decision_node, new_data_a);
+	std::shared_ptr<ValueNode> new_value_node_b = std::make_shared<ValueNode>(new_decision_node, new_data_b);
+	new_decision_node->left_child = new_value_node_a;
+	new_decision_node->right_child = new_value_node_b;
+
+	if (leaf->parent.expired()) { // Splitting the head Node
+		this->head = new_decision_node;
+	} else if (leaf->parent.lock()->left_child.lock() == leaf) { //Replacing a left child
+		leaf->parent.lock()->left_child = new_decision_node;
+		new_decision_node->parent = leaf->parent;
+	} else { //Replacing a right child
+		leaf->parent.lock()->right_child = new_decision_node;
+		new_decision_node->parent = leaf->parent;
 	}
+
 	nodes.erase(leaf); //Remove the 'owning' shared_pointer, so any remaining ones can decay away and the node is deallocated.
-	nodes.insert(new_node_ptr);
+	nodes.insert(new_decision_node);
+	nodes.insert(new_value_node_a);
+	nodes.insert(new_value_node_b);
 };
 size_t DTree::max_depth() {
 	std::queue<std::pair<std::weak_ptr<DTree::Node>, size_t>> toCheck({ {this->head, 0} });
@@ -347,4 +368,20 @@ size_t DTree::max_depth() {
 		if (cur.second > max_depth) { max_depth = cur.second; }
 	}
 	return max_depth;
+}
+std::vector<std::weak_ptr<DTree::ValueNode>> DTree::get_leaves() {
+	std::vector<std::weak_ptr<DTree::ValueNode>> ret;
+	std::queue<std::weak_ptr<DTree::Node>> toCheck({ this->head });
+	while (toCheck.size() > 0) {
+		std::weak_ptr<DTree::Node> cur = toCheck.front();
+		toCheck.pop();
+		if (cur.lock()->left_child.expired() && cur.lock()->right_child.expired()) {
+			ret.push_back(std::dynamic_pointer_cast<DTree::ValueNode>(cur.lock()));
+		}
+		else {
+			if (!cur.lock()->left_child.expired()) { toCheck.push(cur.lock()->left_child); }
+			if (!cur.lock()->right_child.expired()) { toCheck.push(cur.lock()->right_child); }
+		}
+	}
+	return ret;
 }
