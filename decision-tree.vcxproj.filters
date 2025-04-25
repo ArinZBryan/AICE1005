@@ -1,44 +1,56 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
-    </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
     <Filter Include="Resource Files">
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Text Files">
+      <UniqueIdentifier>{7b1c5536-a4b3-4e8b-ae2e-9d93cb7113db}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="C/C++">
+      <UniqueIdentifier>{e18616f2-063a-480f-ba29-f72a7fe26991}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="C/C++\Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="C/C++\Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Python">
+      <UniqueIdentifier>{d91185d7-3d7c-4155-9bc3-cd99efc1ff16}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>C/C++\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DTree.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>C/C++\Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DTree.h">
-      <Filter>Header Files</Filter>
+      <Filter>C/C++\Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="brief.md">
-      <Filter>Resource Files</Filter>
-    </None>
     <None Include="testing.dat">
       <Filter>Resource Files</Filter>
     </None>
     <None Include="training.dat">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="brief.md">
+      <Filter>Text Files</Filter>
+    </None>
     <None Include="AI_Questions.md">
-      <Filter>Resource Files</Filter>
+      <Filter>Text Files</Filter>
+    </None>
+    <None Include="python\main.py">
+      <Filter>Python</Filter>
     </None>
   </ItemGroup>
 </Project>
