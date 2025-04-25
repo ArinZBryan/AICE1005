@@ -308,19 +308,21 @@ static std::priority_queue<struct SplitDetails> findBestSplits(
     return ret;
 }
 
+
+enum LimitingFactor { depth, decisions, leaves };
 static DTree trainDTree(
     std::vector<DataFrame> data, 
     double(*evaluationFunction)(std::vector<DataFrame>),
     unsigned int samples,
+    LimitingFactor limiting_factor,
+    unsigned int limit,
     bool continuousInts = false,
-    bool useGreaterThan = false,
-    int limiting_decisions = 4, 
-    int limiting_depth = -1
+    bool useGreaterThan = false
 ) {
     DTree tree(data);
-    if (limiting_decisions > 0) {
+    if (limiting_factor == decisions) {
         std::priority_queue<NodeSplitDetails> splits;
-        for (int i = 0; i < limiting_decisions; i++) {
+        for (int i = 0; i < limit; i++) {
             for (auto leaf : tree.get_leaves()) {
                 if (!leaf.expired()) {
                     auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
@@ -343,10 +345,31 @@ static DTree trainDTree(
             tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
         }
         return tree;
-    }
-    else if (limiting_depth > 0) {
+    } 
+    else if (limiting_factor == depth) {
         std::priority_queue<NodeSplitDetails> splits;
-        while (tree.max_depth() <= limiting_depth) {
+        while (tree.max_depth() <= limit) {
+            for (auto leaf : tree.get_leaves()) {
+                auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
+                splits.push({ best_splits.top(), leaf });
+            }
+            auto split = splits.top(); splits.pop();
+            while ((split.second.expired() || split.second.lock()->depth() >= limit) && splits.size() > 0) { 
+                split = splits.top(); splits.pop(); 
+            }
+            if (!(split.second.expired() || split.second.lock()->depth() >= limit)) {
+                std::cout << "Split on field " << split.first.comparison.df_field << std::endl;
+                tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+            }
+            else {
+                break;
+            }
+        }
+        return tree;
+    } 
+    else if (limiting_factor == leaves) {
+        std::priority_queue<NodeSplitDetails> splits;
+        while (tree.get_leaves().size() <= limit + 1) {
             for (auto leaf : tree.get_leaves()) {
                 auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
                 splits.push({ best_splits.top(), leaf });
@@ -356,7 +379,7 @@ static DTree trainDTree(
             tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
         }
         return tree;
-    }
+    } 
     else {
         return tree;
     }
@@ -380,8 +403,8 @@ int main()
     std::cout << "Gini Impurity: " << giniImpurity(dfs) << std::endl;
     std::cout << "Entropy: " << entropy(dfs) << std::endl;
     
-    DTree tree = trainDTree(dfs, entropy, 2, false, false, 8, -1);
+    DTree tree = trainDTree(dfs, entropy, 2, depth, 3, false, false);
 
-    //std::cout << tree.to_string();
+    std::cout << tree.to_string();
 }
 

@@ -44,6 +44,7 @@ public:
 
         virtual ~Node();
         virtual std::string toString();
+        size_t depth();
     };
 
     class DecisionNode : public Node {

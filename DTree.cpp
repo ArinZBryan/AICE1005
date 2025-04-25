@@ -29,6 +29,15 @@ DTree::Node::Node(DTree& tree) : tree(tree), left_child(), right_child() {}
 DTree::Node::Node(std::weak_ptr<DTree::Node> parent) : parent(parent), tree(parent.lock()->tree), left_child(), right_child() {}
 DTree::Node::~Node() = default;
 std::string DTree::Node::toString() { return "Node"; };
+size_t DTree::Node::depth() {
+	size_t d = 0;
+	std::weak_ptr<DTree::Node> cur = this->parent;
+	while (!cur.expired()) {
+		d++;
+		cur = cur.lock()->parent;
+	}
+	return d;
+}
 
 DTree::DecisionNode::DecisionNode(DTree& tree) : Node(tree), comparison(lessThan) {};
 DTree::DecisionNode::DecisionNode(std::weak_ptr<DTree::Node> parent) : Node(parent), comparison(lessThan) {};
