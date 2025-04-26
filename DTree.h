@@ -86,15 +86,14 @@ public:
     };
 
     std::string to_string() const;
-
     void split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
-
     size_t max_depth();
-
     std::vector<std::weak_ptr<DTree::ValueNode>> get_leaves();
-
     DTree(std::vector<DataFrame> data_points);
 
+    enum printStyle { percent, size, address, none };
+
+    printStyle print_style;
     std::weak_ptr<Node> head;
 private:
     std::set<std::shared_ptr<Node>> nodes;

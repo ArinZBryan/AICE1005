@@ -98,17 +98,13 @@ DTree::ValueNode::ValueNode(DTree& tree, std::vector<const DataFrame*> data) : N
 DTree::ValueNode::ValueNode(std::weak_ptr<DTree::DecisionNode> parent, std::vector<const DataFrame*> data) : Node(parent), encompassedData(data) {}
 std::vector<const DataFrame*> DTree::ValueNode::getEncompassedData() const { return encompassedData; }
 std::string DTree::ValueNode::modeLabel() {
-	std::map<std::string, int> res;
-	for (const DataFrame* frame : this->encompassedData) {
-		res.try_emplace(frame->label, 0);
-		res[frame->label]++;
-	}
-	std::pair<std::string, int> max = { "No Data Encompassed", -1 };
+	std::map<std::string, int> res = proportionedLabel();
+	std::pair<std::string, int> max = { "None", -1 };
 	for (std::pair<std::string, int> e : res) {
 		if (e.second > max.second) { max = e; }
 	}
 	std::stringstream ret;
-	ret << max.first << " " << static_cast<float>(max.second) / static_cast<float>(this->encompassedData.size()) * 100.0 << "%";
+	ret << max.first;
 	return ret.str();
 }
 std::map<std::string, int> DTree::ValueNode::proportionedLabel() {
@@ -120,8 +116,27 @@ std::map<std::string, int> DTree::ValueNode::proportionedLabel() {
 	return res;
 }
 std::string DTree::ValueNode::toString() {
-	std::string label = modeLabel();
-	return label == "No Data Encompassed" ? "None" : label;
+	std::stringstream label;
+	switch (this->tree.print_style) {
+	case DTree::printStyle::none: 
+		label << modeLabel(); 
+		break;
+	case DTree::printStyle::size: 
+		label << modeLabel() << " ("  << this->encompassedData.size() << ")"; 
+		break;
+	case DTree::printStyle::address: 
+		label << modeLabel() << " (" << this << ")"; 
+		break;
+	case DTree::printStyle::percent: 
+		auto labels = proportionedLabel();
+		std::pair<std::string, int> max = { "None", -1 };
+		for (std::pair<std::string, int> e : labels) {
+			if (e.second > max.second) { max = e; }
+		}
+		label << max.first << " (" << static_cast<float>(max.second) / static_cast<float>(this->encompassedData.size()) << ")";
+		break;
+	}
+	return label.str();
 }
 
 DTree::DTree(std::vector<DataFrame> data_points) {
@@ -129,8 +144,11 @@ DTree::DTree(std::vector<DataFrame> data_points) {
 	this->data = std::move(data_points);
 	
 	// give the new node a vector of (non-owning) pointers to the data
-	std::vector<const DataFrame*> refs(this->data.size());
-	for (const DataFrame& df : data_points) { refs.push_back(&df); }
+	std::vector<const DataFrame*> refs;
+	refs.reserve(this->data.size());
+	for (const DataFrame& df : this->data) { 
+		refs.push_back(&df); 
+	}
 
 	// make the node and move the vector of pointers into it. We don't own it anymore.
 	auto new_node = std::make_shared<ValueNode>(*this, std::move(refs));

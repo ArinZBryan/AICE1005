@@ -37,7 +37,7 @@ for df in ret:
 field_arr = list(map(lambda x: x.fields, ret))
 label_arr = list(map(lambda x: x.label, ret))
 
-dtree = tree.DecisionTreeClassifier(criterion="entropy", max_depth=3)
+dtree = tree.DecisionTreeClassifier(criterion="entropy", max_depth=4)
 dtree = dtree.fit(field_arr, label_arr)
 plt.figure(dpi=300)
 tree.plot_tree(dtree, class_names=True, impurity=True)

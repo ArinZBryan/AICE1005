@@ -17,6 +17,39 @@
 #include <windows.h>
 #endif
 
+#include <iostream>
+#include <sstream>
+
+class DebugLogger {
+public:
+    static void setDebug(bool value) {
+        debug = value;
+    }
+
+    template<typename T>
+    DebugLogger& operator<<(const T& value) {
+        if (debug) {
+            std::cout << value;
+        }
+        return *this;
+    }
+
+    // Support std::endl and other manipulators
+    DebugLogger& operator<<(std::ostream& (*manip)(std::ostream&)) {
+        if (debug) {
+            std::cout << manip;
+        }
+        return *this;
+    }
+
+private:
+    static inline bool debug = false;
+};
+
+// Global instance
+DebugLogger Debugout;
+
+
 // Like strtok from c stdlib, but for std::string
 static std::vector<std::string> strtokstr(std::string s, char sep) {
     std::vector<std::string> ret;
@@ -94,6 +127,10 @@ static double entropy(std::vector<const DataFrame*> data) {
     double entropy = 0;
     for (std::pair<std::string, int> cat : set_frequencies) {
         double p = static_cast<double>(cat.second) / static_cast<double>(data.size());
+        if (p == 0.0) { continue; } 
+        // Note: This (above line) is to fix a bug where silent NaNs can creep in if one class is not represented
+        //       because 0 * log2(0) = 0 * NaN (silent), we get another silent NaN instead of zero,
+        //       because where humans would just not continue calculating, computers continue anyway.
         entropy += p * log2(p);
     }
     return -entropy;
@@ -258,7 +295,7 @@ static std::priority_queue<struct SplitDetails> findBestSplits(
 
         if (min_element == max_element) {
             local_queue.push({ 
-                1.0, 
+                0.0, 
                 { 
                     DTree::DecisionNode::comparisonType::equal, 
                     static_cast<size_t>(field_index), 
@@ -271,14 +308,15 @@ static std::priority_queue<struct SplitDetails> findBestSplits(
         if (!continuousInts && std::holds_alternative<int>(temp_copy[0]->fields[field_index])) {
             // Ignore the samples parameter - we'll just check all the value we know about.
             for (int j = std::get<int>(min_element->fields[field_index]); j <= std::get<int>(max_element->fields[field_index]); j++) {
+                auto purityGain = evaluateSplit(
+                    src,
+                    DTree::DecisionNode::comparisonType::equal,
+                    static_cast<size_t>(field_index),
+                    j,
+                    evaluationFunction
+                );
                 local_queue.push({ 
-                    evaluateSplit(
-                        src, 
-                        DTree::DecisionNode::comparisonType::equal, 
-                        static_cast<size_t>(field_index), 
-                        j, 
-                        evaluationFunction
-                    ), 
+                    purityGain, 
                     { 
                         DTree::DecisionNode::comparisonType::equal,
                         static_cast<size_t>(field_index), 
@@ -399,6 +437,7 @@ static DTree trainDTree(
     bool useGreaterThan = false
 ) {
     DTree tree(data);
+    tree.print_style = DTree::printStyle::size;
     if (limiting_factor == decisions) {
         std::priority_queue<NodeSplitDetails> splits;
         for (int i = 0; i < limit; i++) {
@@ -448,23 +487,31 @@ static DTree trainDTree(
         std::priority_queue<NodeSplitDetails> splits;
         while (tree.max_depth() <= limit) {
             for (auto leaf : tree.get_leaves()) {
-                if (leaf.lock()->getEncompassedData().size() < 2) { std::cout << "Prevented splitting small leaf" << std::endl; }
+                if (leaf.lock()->getEncompassedData().size() < 2) { Debugout << "Prevented splitting small leaf." << std::endl; }
                 else {
                     auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
-                    std::cout << "Found " << best_splits.size() << "splits..." << std::endl;
+                    Debugout << "Evaluated " << best_splits.size() << " splits on node @ " << leaf.lock().get() << std::endl;
                     splits.push({ best_splits.top(), leaf });
                 }
             }
-            if (splits.size() == 0) { std::cout << "No more nodes I can split" << std::endl;  break; }
+
+            Debugout << "Found " << splits.size() << " splits..." << std::endl;
+            if (splits.size() == 0) { break; }
+            
             auto split = splits.top(); splits.pop();
             while ((split.second.expired() || split.second.lock()->depth() >= limit) && splits.size() > 0) { 
                 split = splits.top(); splits.pop(); 
+                Debugout << "Rejected split - leaf expired or too deep. Trying another..." << std::endl;
             }
+            
             if (!(split.second.expired() || split.second.lock()->depth() >= limit)) {
-                std::cout << "Split on field " << split.first.comparison.df_field << std::endl;
+                Debugout << "Spliting on field " << split.first.comparison.df_field << " (" << split.second.lock()->toString() << ") ";
+                Debugout << "Purity Gain: " << split.first.purity << std::endl;
                 tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+                Debugout << tree.to_string();
             }
             else {
+                Debugout << "Could not split - all splits were rejected." << std::endl;
                 break;
             }
         }
@@ -500,11 +547,16 @@ int main()
     std::cout.imbue(std::locale());
 #endif
 
-    std::vector<DataFrame> dfs = loadFile(10, "C:\\Users\\arinb\\OneDrive\\Documents\\Computer_Engineering\\Coursework\\AICE1005\\training.dat");
-    std::cout << "Loaded " << dfs.size() << " DataFrames from file." << std::endl;
-    
-    DTree tree = trainDTree(dfs, entropy, 2, depth, 3, false, false);
+    DebugLogger::setDebug(false);
 
-    std::cout << tree.to_string();
+    std::vector<DataFrame> dfs = loadFile(10, "C:\\Users\\arinb\\OneDrive\\Documents\\Computer_Engineering\\Coursework\\AICE1005\\training.dat");
+    Debugout << "Loaded " << dfs.size() << " DataFrames from file." << std::endl;
+    
+    for (int i = 0; i < 100; i++) {
+        DTree tree = trainDTree(dfs, entropy, 2, depth, 5, false, false);
+    }
+    
+
+    //std::cout << tree.to_string();
 }
 
