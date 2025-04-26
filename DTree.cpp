@@ -43,19 +43,40 @@ DTree::DecisionNode::DecisionNode(DTree& tree) : Node(tree), comparison(lessThan
 DTree::DecisionNode::DecisionNode(std::weak_ptr<DTree::Node> parent) : Node(parent), comparison(lessThan) {};
 DTree::DecisionNode::DecisionNode(DTree& tree, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst)
 : Node(tree), dataFrameField(dataFrameField), comparison(comparison), compareAgainst(compareAgainst) {}
-bool DTree::DecisionNode::decide(DataFrame value) const { 
+bool DTree::DecisionNode::decide(const DataFrame* value) const { 
+	return DTree::DecisionNode::decide(this->dataFrameField, this->comparison, this->compareAgainst, value);
+}
+bool DTree::DecisionNode::decide(size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst, const DataFrame* value) {
 	bool ret = false;
-	if (this->comparison == equal) {
-		return this->compareAgainst == value.fields[dataFrameField];
+	if (comparison == DTree::DecisionNode::comparisonType::equal) {
+		return compareAgainst == value->fields[dataFrameField];
 	}
-	else if (this->comparison == lessThan) {
-		return this->compareAgainst < value.fields[dataFrameField];
+	else if (comparison == DTree::DecisionNode::comparisonType::lessThan) {
+		return compareAgainst < value->fields[dataFrameField];
 	}
-	else if (this->comparison == greaterThan) {
-		return this->compareAgainst > value.fields[dataFrameField];
+	else if (comparison == DTree::DecisionNode::comparisonType::greaterThan) {
+		return compareAgainst > value->fields[dataFrameField];
 	}
 	return false;
+
 }
+std::pair<std::vector<const DataFrame*>, std::vector<const DataFrame*>> DTree::DecisionNode::evaluate(const std::vector<const DataFrame*>& data) const {
+	return DTree::DecisionNode::evaluate(this->dataFrameField, this->comparison, this->compareAgainst, data);
+}
+std::pair<std::vector<const DataFrame*>, std::vector<const DataFrame*>> DTree::DecisionNode::evaluate(size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst, const std::vector<const DataFrame*>& data) {
+	std::vector<const DataFrame*> out_a;
+	std::vector<const DataFrame*> out_b;
+	for (const DataFrame* df : data) {
+		if (decide(dataFrameField, comparison, compareAgainst, df)) {
+			out_a.push_back(df);
+		}
+		else {
+			out_b.push_back(df);
+		}
+	}
+	return { out_a, out_b };
+}
+
 std::string DTree::DecisionNode::toString() {
 	std::stringstream stream;
 	stream << "[" << dataFrameField << "] ";
@@ -73,14 +94,14 @@ std::string DTree::DecisionNode::toString() {
 DTree::ValueNode::ValueNode() : Node(tree) {}
 DTree::ValueNode::ValueNode(DTree& tree) : Node(tree) {}
 DTree::ValueNode::ValueNode(std::weak_ptr<DTree::DecisionNode> parent) : Node(parent) {}
-DTree::ValueNode::ValueNode(DTree& tree, std::vector<DataFrame> data) : Node(tree), encompassedData(data) {}
-DTree::ValueNode::ValueNode(std::weak_ptr<DTree::DecisionNode> parent, std::vector<DataFrame> data) : Node(parent), encompassedData(data) {}
-const std::vector<DataFrame>& DTree::ValueNode::getEncompassedData() { return encompassedData; }
+DTree::ValueNode::ValueNode(DTree& tree, std::vector<const DataFrame*> data) : Node(tree), encompassedData(data) {}
+DTree::ValueNode::ValueNode(std::weak_ptr<DTree::DecisionNode> parent, std::vector<const DataFrame*> data) : Node(parent), encompassedData(data) {}
+std::vector<const DataFrame*> DTree::ValueNode::getEncompassedData() const { return encompassedData; }
 std::string DTree::ValueNode::modeLabel() {
 	std::map<std::string, int> res;
-	for (DataFrame frame : this->encompassedData) {
-		res.try_emplace(frame.label, 0);
-		res[frame.label]++;
+	for (const DataFrame* frame : this->encompassedData) {
+		res.try_emplace(frame->label, 0);
+		res[frame->label]++;
 	}
 	std::pair<std::string, int> max = { "No Data Encompassed", -1 };
 	for (std::pair<std::string, int> e : res) {
@@ -92,9 +113,9 @@ std::string DTree::ValueNode::modeLabel() {
 }
 std::map<std::string, int> DTree::ValueNode::proportionedLabel() {
 	std::map<std::string, int> res;
-	for (DataFrame frame : this->encompassedData) {
-		res.try_emplace(frame.label, 0);
-		res[frame.label]++;
+	for (const DataFrame* frame : this->encompassedData) {
+		res.try_emplace(frame->label, 0);
+		res[frame->label]++;
 	}
 	return res;
 }
@@ -104,10 +125,19 @@ std::string DTree::ValueNode::toString() {
 }
 
 DTree::DTree(std::vector<DataFrame> data_points) {
-	this->nodes = {};
-	auto new_node = std::make_shared<ValueNode>(*this, data_points);
+	// take ownership of the vector forcibly
+	this->data = std::move(data_points);
+	
+	// give the new node a vector of (non-owning) pointers to the data
+	std::vector<const DataFrame*> refs(this->data.size());
+	for (const DataFrame& df : data_points) { refs.push_back(&df); }
+
+	// make the node and move the vector of pointers into it. We don't own it anymore.
+	auto new_node = std::make_shared<ValueNode>(*this, std::move(refs));
+
+	// finish initialising the tree
 	this->head = new_node;
-	this->nodes.insert(new_node);
+	this->nodes = { new_node };
 }
 std::string DTree::to_string() const {
 	std::stringstream out;
@@ -334,20 +364,14 @@ std::string DTree::to_string() const {
 }
 void DTree::split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst) {
 	std::shared_ptr<DecisionNode> new_decision_node = std::make_shared<DecisionNode>((DTree&)*this, dataFrameField, comparison, compareAgainst);
-	std::vector<DataFrame> new_data_a;
-	std::vector<DataFrame> new_data_b;
+	auto new_data = new_decision_node->evaluate(leaf->getEncompassedData());
 
-	for (DataFrame df : leaf->getEncompassedData()) {
-		if (new_decision_node->decide(df)) {
-			new_data_a.push_back(std::move(df));
-		}
-		else {
-			new_data_b.push_back(std::move(df));
-		}
+	if (new_data.first.size() == 0 || new_data.second.size() == 0) {
+		throw "Split will result in empty leaf";
 	}
 
-	std::shared_ptr<ValueNode> new_value_node_a = std::make_shared<ValueNode>(new_decision_node, new_data_a);
-	std::shared_ptr<ValueNode> new_value_node_b = std::make_shared<ValueNode>(new_decision_node, new_data_b);
+	std::shared_ptr<ValueNode> new_value_node_a = std::make_shared<ValueNode>(new_decision_node, new_data.first);
+	std::shared_ptr<ValueNode> new_value_node_b = std::make_shared<ValueNode>(new_decision_node, new_data.second);
 	new_decision_node->left_child = new_value_node_a;
 	new_decision_node->right_child = new_value_node_b;
 

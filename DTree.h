@@ -58,17 +58,20 @@ public:
         DecisionNode(std::weak_ptr<DTree::Node> parent);
 
         DecisionNode(DTree& tree, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
-        bool decide(DataFrame value) const;
+        bool decide(const DataFrame* value) const;
+        static bool decide(size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst, const DataFrame* value);
+        std::pair<std::vector<const DataFrame*>, std::vector<const DataFrame*>> evaluate(const std::vector<const DataFrame*>& data) const;
+        static std::pair<std::vector<const DataFrame*>, std::vector<const DataFrame*>> evaluate(size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst, const std::vector<const DataFrame*>& data);
         std::string toString();
 
     };
 
     class ValueNode : public Node {
     private:
-        std::vector<DataFrame> encompassedData;
+        std::vector<const DataFrame*> encompassedData;
     public:
 
-        const std::vector<DataFrame>& getEncompassedData();
+        std::vector<const DataFrame*> getEncompassedData() const;
         std::string modeLabel();
         std::map<std::string, int> proportionedLabel();
 
@@ -76,8 +79,8 @@ public:
         ValueNode();
         ValueNode(DTree& tree);
         ValueNode(std::weak_ptr<DTree::DecisionNode> parent);
-        ValueNode(DTree& tree, std::vector<DataFrame> data);
-        ValueNode(std::weak_ptr<DTree::DecisionNode> parent, std::vector<DataFrame> data);
+        ValueNode(DTree& tree, std::vector<const DataFrame*> data);
+        ValueNode(std::weak_ptr<DTree::DecisionNode> parent, std::vector<const DataFrame*> data);
 
         std::string toString();
     };
@@ -95,5 +98,5 @@ public:
     std::weak_ptr<Node> head;
 private:
     std::set<std::shared_ptr<Node>> nodes;
-    
+    std::vector<DataFrame> data;
 };
