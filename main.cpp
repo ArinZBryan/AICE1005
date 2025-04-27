@@ -442,47 +442,36 @@ static DTree trainDTree(
         std::priority_queue<NodeSplitDetails> splits;
         for (int i = 0; i < limit; i++) {
             for (auto leaf : tree.get_leaves()) {
-                if (!leaf.expired()) {
+                if (leaf.lock()->getEncompassedData().size() < 2) { Debugout << "Prevented splitting small leaf." << std::endl; }
+                else {
                     auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
-                    if (best_splits.size() == 0) {
-                        continue;
-                    }
+                    Debugout << "Evaluated " << best_splits.size() << " splits on node @ " << leaf.lock().get() << std::endl;
                     splits.push({ best_splits.top(), leaf });
                 }
-                else {
-                    std::cerr << "Attempted to access empty leaf" << std::endl;
-                }
-            }
-            // get first split
-            auto split = splits.top(); 
-            splits.pop();
-
-            // reject splits until we have one on a value node that currently exists
-            // also reject splits that produce a value node with nothing in it.
-            while (true) {
-                if (split.second.expired()) { 
-                    split = splits.top();
-                    splits.pop();
-                    continue;
-                }
-                auto preemptive_split = DTree::DecisionNode::evaluate(
-                    split.first.comparison.df_field,
-                    split.first.comparison.type,
-                    split.first.comparison.constant,
-                    split.second.lock()->getEncompassedData()
-                );
-                if (preemptive_split.first.size() == 0 || preemptive_split.second.size() == 0) { 
-                    split = splits.top();
-                    splits.pop();
-                    continue;
-                }
-                
             }
 
-            tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+            Debugout << "Found " << splits.size() << " splits..." << std::endl;
+            if (splits.size() == 0) { break; }
+
+            auto split = splits.top(); splits.pop();
+            while (split.second.expired() && splits.size() > 0) {
+                split = splits.top(); splits.pop();
+                Debugout << "Rejected split - leaf expired or too deep. Trying another..." << std::endl;
+            }
+
+            if (!split.second.expired()) {
+                Debugout << "Spliting on field " << split.first.comparison.df_field << " (" << split.second.lock()->toString() << ") ";
+                Debugout << "Purity Gain: " << split.first.purity << std::endl;
+                tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+                Debugout << tree.to_string();
+            }
+            else {
+                Debugout << "Could not split - all splits were rejected." << std::endl;
+                break;
+            }
         }
         return tree;
-    } 
+    }
     else if (limiting_factor == depth) {
         std::priority_queue<NodeSplitDetails> splits;
         while (tree.max_depth() <= limit) {
@@ -516,17 +505,38 @@ static DTree trainDTree(
             }
         }
         return tree;
-    } 
+    }
     else if (limiting_factor == leaves) {
         std::priority_queue<NodeSplitDetails> splits;
-        while (tree.get_leaves().size() <= limit + 1) {
+        while (tree.get_leaves().size() < limit) {
             for (auto leaf : tree.get_leaves()) {
-                auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
-                splits.push({ best_splits.top(), leaf });
+                if (leaf.lock()->getEncompassedData().size() < 2) { Debugout << "Prevented splitting small leaf." << std::endl; }
+                else {
+                    auto best_splits = findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
+                    Debugout << "Evaluated " << best_splits.size() << " splits on node @ " << leaf.lock().get() << std::endl;
+                    splits.push({ best_splits.top(), leaf });
+                }
             }
+
+            Debugout << "Found " << splits.size() << " splits..." << std::endl;
+            if (splits.size() == 0) { break; }
+
             auto split = splits.top(); splits.pop();
-            while (split.second.expired()) { split = splits.top(); splits.pop(); }
-            tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+            while (split.second.expired() && splits.size() > 0) {
+                split = splits.top(); splits.pop();
+                Debugout << "Rejected split - leaf expired or too deep. Trying another..." << std::endl;
+            }
+
+            if (!split.second.expired()) {
+                Debugout << "Spliting on field " << split.first.comparison.df_field << " (" << split.second.lock()->toString() << ") ";
+                Debugout << "Purity Gain: " << split.first.purity << std::endl;
+                tree.split_leaf(split.second.lock(), split.first.comparison.df_field, split.first.comparison.type, split.first.comparison.constant);
+                Debugout << tree.to_string();
+            }
+            else {
+                Debugout << "Could not split - all splits were rejected." << std::endl;
+                break;
+            }
         }
         return tree;
     } 
@@ -547,16 +557,13 @@ int main()
     std::cout.imbue(std::locale());
 #endif
 
-    DebugLogger::setDebug(false);
+    DebugLogger::setDebug(true);
 
     std::vector<DataFrame> dfs = loadFile(10, "C:\\Users\\arinb\\OneDrive\\Documents\\Computer_Engineering\\Coursework\\AICE1005\\training.dat");
     Debugout << "Loaded " << dfs.size() << " DataFrames from file." << std::endl;
     
-    for (int i = 0; i < 100; i++) {
-        DTree tree = trainDTree(dfs, entropy, 2, depth, 5, false, false);
-    }
+    DTree tree = trainDTree(dfs, entropy, 2, leaves, 6, false, false);
     
-
     //std::cout << tree.to_string();
 }
 
