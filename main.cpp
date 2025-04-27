@@ -1,5 +1,6 @@
 ﻿#include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,9 +17,6 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
-
-#include <iostream>
-#include <sstream>
 
 class DebugLogger {
 public:
@@ -76,6 +74,7 @@ static std::vector<DataFrame> loadFile(size_t label, std::filesystem::path path)
         if (line == "") { continue; }
         std::vector<std::string> tokens = strtokstr(line, ' ');
         DataFrame df;
+        bool labelIsNumeric = false;
         for (size_t i = 0; i < tokens.size(); i++) {
             std::string token = tokens[i];
             if (i == label) {
@@ -93,6 +92,153 @@ static std::vector<DataFrame> loadFile(size_t label, std::filesystem::path path)
         ret.push_back(df);
     }
     file.close();
+    if (ret[0].label == "") { 
+        std::cerr << "Could not autodetect labels." << std::endl;
+        exit(1);
+    }
+    return ret;
+}
+
+static std::vector<DataFrame> loadFileIntRange(size_t label, unsigned int no_ranges, std::filesystem::path path) {
+    if (!std::filesystem::exists(path) || !std::filesystem::is_regular_file(path)) {
+        std::cerr << "Could Not Read File" << std::endl;
+    }
+    std::vector<DataFrame> ret;
+    std::string line;
+    std::ifstream file(path);
+    std::string value;
+
+    while (file) {
+        std::getline(file, line);
+        if (line == "") { continue; }
+        std::vector<std::string> tokens = strtokstr(line, ' ');
+        DataFrame df;
+        bool labelIsNumeric = false;
+        for (size_t i = 0; i < tokens.size(); i++) {
+            std::string token = tokens[i];
+            if (i == label) {
+                df.label = token;
+            }
+            else if (token.find(".") != std::string::npos) {
+                df.fields.push_back(strtof(token.c_str(), nullptr));
+            }
+            else {
+                bool alpha = false;
+                for (size_t iter = token.length(); iter < token.length() && !alpha; iter++) { alpha |= static_cast<bool>(isalpha(token[iter])); }
+                if (alpha) { df.label = token; }
+                else { df.fields.push_back(strtol(token.c_str(), nullptr, 10)); }
+            }
+        }
+        ret.push_back(df);
+    }
+    file.close();
+    int min = INT_MIN;
+    int max = INT_MAX;
+    for (const DataFrame& df : ret) { 
+        int val = strtol(df.label.c_str(), nullptr, 10);
+        if (val > max) { max = val; }
+        if (val < min) { min = val; }
+    }
+
+    std::vector<std::tuple<std::string, int, int>> labels(no_ranges);
+    labels[0] = {
+        "x < " + std::to_string(static_cast<int>(min + ((max - min) / static_cast<float>(no_ranges)))),
+        INT_MIN,
+        static_cast<int>(min + ((max - min) / static_cast<float>(no_ranges)))
+    };
+    labels[no_ranges - 1] = {
+        std::to_string(static_cast<int>(min + ((max - min) * static_cast<float>(no_ranges - 1) / static_cast<float>(no_ranges)))) + " <= x",
+        static_cast<int>(min + ((max - min) * static_cast<float>(no_ranges - 1) / static_cast<float>(no_ranges))),
+        INT_MAX
+    };
+    for (unsigned int i = 1; i < no_ranges - 1; i++) {
+        float bound_lo = min + ((max - min) * static_cast<float>(i) / static_cast<float>(no_ranges));
+        float bound_hi = min + ((max - min) * static_cast<float>(i + 1) / static_cast<float>(no_ranges));
+        labels[i] = { std::to_string(bound_lo) + " <= x < " + std::to_string(bound_hi), bound_lo, bound_hi };
+    }
+
+    for (DataFrame& df : ret) {
+        int val = strtol(df.label.c_str(), nullptr, 10);
+        for (unsigned int i = 0; i < labels.size(); i++) {
+            if (std::get<1>(labels[i]) <= val && val < std::get<2>(labels[i])) {
+                df.label = std::get<0>(labels[i]);
+            }
+        }
+    }
+
+    return ret;
+}
+
+static std::vector<DataFrame> loadFileFloatRange(size_t label, unsigned int no_ranges, std::filesystem::path path) {
+    if (!std::filesystem::exists(path) || !std::filesystem::is_regular_file(path)) {
+        std::cerr << "Could Not Read File" << std::endl;
+    }
+    std::vector<DataFrame> ret;
+    std::string line;
+    std::ifstream file(path);
+    std::string value;
+
+    while (file) {
+        std::getline(file, line);
+        if (line == "") { continue; }
+        std::vector<std::string> tokens = strtokstr(line, ' ');
+        DataFrame df;
+        bool labelIsNumeric = false;
+        for (size_t i = 0; i < tokens.size(); i++) {
+            std::string token = tokens[i];
+            if (i == label) {
+                df.label = token;
+            }
+            else if (token.find(".") != std::string::npos) {
+                df.fields.push_back(strtof(token.c_str(), nullptr));
+            }
+            else {
+                bool alpha = false;
+                for (size_t iter = token.length(); iter < token.length() && !alpha; iter++) { alpha |= static_cast<bool>(isalpha(token[iter])); }
+                if (alpha) { df.label = token; }
+                else { df.fields.push_back(strtol(token.c_str(), nullptr, 10)); }
+            }
+        }
+        ret.push_back(df);
+    }
+    file.close();
+
+    float min = std::numeric_limits<float>::infinity();
+    float max = -std::numeric_limits<float>::infinity();
+    for (const DataFrame& df : ret) {
+        float val = strtof(df.label.c_str(), nullptr);
+        if (val > max) { max = val; }
+        if (val < min) { min = val; }
+    }
+
+    std::vector<std::tuple<std::string, float, float>> labels(no_ranges);
+    labels[0] = {
+        "x < " + std::to_string(min + ((max - min) / static_cast<float>(no_ranges))),
+        -std::numeric_limits<float>::infinity(),
+        min + ((max - min) / static_cast<float>(no_ranges))
+    };
+    labels[no_ranges - 1] = {
+        std::to_string(min + ((max - min)  * static_cast<float>(no_ranges - 1) / static_cast<float>(no_ranges))) + " <= x",
+        min + ((max - min) * static_cast<float>(no_ranges - 1) / static_cast<float>(no_ranges)),
+        std::numeric_limits<float>::infinity()
+    };
+    for (unsigned int i = 1; i < no_ranges - 1; i++) {
+        float bound_lo = min + ((max - min) * static_cast<float>(i) / static_cast<float>(no_ranges));
+        float bound_hi = min + ((max - min) * static_cast<float>(i + 1) / static_cast<float>(no_ranges));
+        labels[i] = { std::to_string(bound_lo) + " <= x < " + std::to_string(bound_hi), bound_lo, bound_hi };
+    }
+
+    
+
+    for (DataFrame& df : ret) {
+        float val = strtof(df.label.c_str(), nullptr);
+        for (unsigned int i = 0; i < labels.size(); i++) {
+            if (std::get<1>(labels[i]) <= val && val < std::get<2>(labels[i])) {
+                df.label = std::get<0>(labels[i]);
+            }
+        }
+    }
+
     return ret;
 }
 
@@ -220,11 +366,15 @@ static double evaluateSplit(
         }   
     }
     
+    if (data_a.size() < 1 || data_b.size()) {
+        return 0.0;
+    }
+
     double loss_a = minimiseFunc(data_a);
     double loss_b = minimiseFunc(data_b);
     double fraction_a = static_cast<double>(data_a.size()) / static_cast<double>(data.size());
     double fraction_b = static_cast<double>(data_b.size()) / static_cast<double>(data.size());
-    
+
     return minimiseFunc(data) - (fraction_a * loss_a + fraction_b * loss_b);
 }
 
@@ -295,7 +445,7 @@ static std::priority_queue<struct SplitDetails> findBestSplits(
 
         if (min_element == max_element) {
             local_queue.push({ 
-                0.0, 
+                -std::numeric_limits<double>::infinity(),
                 { 
                     DTree::DecisionNode::comparisonType::equal, 
                     static_cast<size_t>(field_index), 
@@ -559,11 +709,12 @@ int main()
 
     DebugLogger::setDebug(true);
 
-    std::vector<DataFrame> dfs = loadFile(10, "C:\\Users\\arinb\\OneDrive\\Documents\\Computer_Engineering\\Coursework\\AICE1005\\training.dat");
+    //std::vector<DataFrame> dfs = loadFile(10, "C:\\Users\\arinb\\OneDrive\\Documents\\Computer_Engineering\\Coursework\\AICE1005\\training.dat");
+    std::vector<DataFrame> dfs = loadFileFloatRange(9, 10, "C:\\Users\\arinb\\OneDrive\\Documents\\Computer_Engineering\\Coursework\\AICE1005\\gameandgrade.dat");
     Debugout << "Loaded " << dfs.size() << " DataFrames from file." << std::endl;
     
-    DTree tree = trainDTree(dfs, entropy, 2, leaves, 6, false, false);
+    DTree tree = trainDTree(dfs, entropy, 10, leaves, 6, true, false);
     
-    //std::cout << tree.to_string();
+    std::cout << tree.to_string();
 }
 

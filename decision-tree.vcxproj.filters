@@ -49,8 +49,15 @@
     <None Include="AI_Questions.md">
       <Filter>Text Files</Filter>
     </None>
-    <None Include="python\main.py">
+    <None Include="python\reference_implementation.py">
       <Filter>Python</Filter>
+    </None>
+    <None Include="packages.config" />
+    <None Include="csv_groupcol.py">
+      <Filter>Python</Filter>
+    </None>
+    <None Include="gameandgrade.dat">
+      <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>
 </Project>
