@@ -3,7 +3,7 @@
 #include <random>
 
 // Like strtok from c stdlib, but for std::string
-static std::vector<std::string> strtokstr(std::string s, char sep) {
+std::vector<std::string> strtokstr(std::string s, char sep) {
     std::vector<std::string> ret;
     std::stringstream token;
     for (size_t i = 0; i < s.length(); i++) {

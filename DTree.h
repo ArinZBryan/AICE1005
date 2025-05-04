@@ -13,7 +13,17 @@
 #include <unordered_map>
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <utility>
+#include <filesystem>
+#include <cctype>
 
+#include "DebugLogger.hpp"
+
+#define USE_OPENMP
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
 
 // TODO: See if we can reduce the use of the copy constructor DataFrame::DataFrame(const DataFrame&).
 //       It's still taking 10-20% of all runtime :( - I think most of its use seems to be in constructing
@@ -89,13 +99,84 @@ public:
     void split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst);
     size_t max_depth();
     std::vector<std::weak_ptr<DTree::ValueNode>> get_leaves();
+
+
+    class Training {
+    public:
+        static std::vector<DataFrame> loadFile(size_t label, std::filesystem::path path);
+        static std::vector<DataFrame> loadFileIntRange(size_t label, unsigned int no_ranges, std::filesystem::path path);
+        static std::vector<DataFrame> loadFileFloatRange(size_t label, unsigned int no_ranges, std::filesystem::path path);
+        class LossFunctions {
+        public:
+            static double entropy(std::vector<const DataFrame*> data);
+            static double giniImpurity(std::vector<const DataFrame*> data);
+        };
+        static double evaluateSplit(
+            std::shared_ptr<ValueNode> toSplit,
+            DTree::DecisionNode::comparisonType comparisonType,
+            size_t comparisonField,
+            std::variant<int, float> compareAgainst,
+            double(*minimiseFunc)(std::vector<const DataFrame*>)
+        );
+        struct SplitDetails {
+            double purity;
+            struct {
+                DecisionNode::comparisonType type;
+                size_t df_field;
+                std::variant<int, float> constant;
+            } comparison;
+            bool operator<(const SplitDetails& other) const {
+                return this->purity < other.purity;
+            }
+        };
+        struct NodeSplitDetails {
+            struct SplitDetails first;
+            std::weak_ptr<ValueNode> second;
+            bool operator<(const NodeSplitDetails& other) const {
+                return this->first.purity < other.first.purity;
+            }
+        };
+        static std::priority_queue<struct SplitDetails> findBestSplits(
+            std::shared_ptr<ValueNode> src,
+            double(*evaluationFunction)(std::vector<const DataFrame*>),
+            unsigned int samples,
+            bool continuousInts = false,
+            bool useGreaterThan = false
+        );
+        enum LimitingFactor { depth, decisions, leaves };
+        static void train(
+            DTree& tree,
+            double(*evaluationFunction)(std::vector<const DataFrame*>),
+            unsigned int samples,
+            LimitingFactor limiting_factor,
+            unsigned int limit,
+            bool continuousInts = false,
+            bool useGreaterThan = false
+        );
+    };
+
+    void train(
+        double(*evaluationFunction)(std::vector<const DataFrame*>),
+        unsigned int samples,
+        Training::LimitingFactor limiting_factor,
+        unsigned int limit,
+        bool continuousInts = false,
+        bool useGreaterThan = false
+    );
+
     DTree(std::vector<DataFrame> data_points);
+    DTree(std::vector<DataFrame> data_points, std::initializer_list<size_t> fields);
 
     enum printStyle { percent, size, address, none };
-
+    Training training;
     printStyle print_style;
     std::weak_ptr<Node> head;
+    const std::vector<size_t> fields;
 private:
+    static std::vector<size_t> make_fields_arg(const std::vector<DataFrame>& data_points);
+
     std::set<std::shared_ptr<Node>> nodes;
     std::vector<DataFrame> data;
 };
+
+//std::ostream& operator<<(std::ostream& os, const DTree::Training::SplitDetails& sd) {

@@ -145,9 +145,12 @@
   <ItemGroup>
     <ClCompile Include="DTree.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="utility.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DebugLogger.hpp" />
     <ClInclude Include="DTree.h" />
+    <ClInclude Include="utility.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="AI_Questions.md" />
