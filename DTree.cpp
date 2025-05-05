@@ -770,8 +770,7 @@ double DTree::Training::evaluateSplit(
     return minimiseFunc(data) - (fraction_a * loss_a + fraction_b * loss_b);
 }
 
-/*
-static std::ostream& operator<<(std::ostream& os, const SplitDetails& sd) {
+static std::ostream& operator<<(std::ostream& os, const DTree::Training::SplitDetails& sd) {
     os << "{purity: " << sd.purity << " split: [" << sd.comparison.df_field << "]";
     switch (sd.comparison.type) {
     case DTree::DecisionNode::comparisonType::equal: os << " = "; break;
@@ -782,7 +781,6 @@ static std::ostream& operator<<(std::ostream& os, const SplitDetails& sd) {
     os << "}";
     return os;
 }
-*/
 
 // This function, based on some preliminary profiling runs 2.3x faster due to utilising OpenMP
 // to multithread the main for loop. And it was so much easier to make work than python 
@@ -798,28 +796,29 @@ std::priority_queue<struct DTree::Training::SplitDetails> DTree::Training::findB
     if (data.size() == 0) { throw "Cannot split node with no data"; }
     size_t df_fields = data[0]->fields.size();
 
-    // Create thread-local priority queues to avoid race conditions
-    std::vector<std::priority_queue<struct SplitDetails>> thread_queues(
 #ifdef USE_OPENMP
-        omp_get_max_threads()
+    // Create thread-local priority queues to avoid race conditions
+    std::vector<std::priority_queue<struct SplitDetails>> thread_queues(omp_get_max_threads());
 #else
-        1
+    std::vector<std::priority_queue<struct SplitDetails>> thread_queues(1);
 #endif
-    );
 
 #ifdef USE_OPENMP
     // Parallelize the loop over field indices
 #pragma omp parallel for
 #endif
-    for (int field_index = 0; field_index < df_fields; field_index++) {
+    //for (auto field_index : src->tree.fields) {
+    for (int field_index_index = 0; field_index_index < static_cast<int>(src->tree.fields.size()); field_index_index++) {
+        size_t field_index = src->tree.fields[field_index_index];
         // Get the thread-local queue for this thread
-        int thread_id =
+
 #ifdef USE_OPENMP
-            omp_get_thread_num();
+        int thread_id = omp_get_thread_num();
 #else
-            0
+        int thread_id = 0;
 #endif
-            std::priority_queue<struct SplitDetails>&local_queue = thread_queues[thread_id];
+
+        std::priority_queue<struct SplitDetails>&local_queue = thread_queues[thread_id];
 
         std::vector<const DataFrame*> temp_copy = data;
         const DataFrame* min_element = nullptr;

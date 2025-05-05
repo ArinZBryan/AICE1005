@@ -1,21 +1,24 @@
 ﻿#pragma once
 #include <set>
+#include <vector>
+#include <map>
+#include <unordered_map>
+#include <queue>
+
 #include <memory>
 #include <optional>
 #include <variant>
-#include <vector>
 #include <string>
-#include <map>
-#include <queue>
+
+#include <fstream>
 #include <iostream>
 #include <sstream>
+#include <filesystem>
+
 #include <iterator>
-#include <unordered_map>
 #include <algorithm>
 #include <cmath>
-#include <fstream>
-#include <utility>
-#include <filesystem>
+
 #include <cctype>
 
 #include "DebugLogger.hpp"
@@ -179,4 +182,4 @@ private:
     std::vector<DataFrame> data;
 };
 
-//std::ostream& operator<<(std::ostream& os, const DTree::Training::SplitDetails& sd) {
+std::ostream& operator<<(std::ostream& os, const DTree::Training::SplitDetails& sd);
