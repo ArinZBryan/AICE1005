@@ -23,14 +23,11 @@
 
 #include "DebugLogger.hpp"
 
-#define USE_OPENMP
+//#define USE_OPENMP
 #ifdef USE_OPENMP
 #include <omp.h>
 #endif
 
-// TODO: See if we can reduce the use of the copy constructor DataFrame::DataFrame(const DataFrame&).
-//       It's still taking 10-20% of all runtime :( - I think most of its use seems to be in constructing
-//       vectors, but I don't know if that's avoidable.
 struct DataFrame {
     std::string label;
     std::vector<std::variant<int, float>> fields;
@@ -139,12 +136,12 @@ public:
                 return this->first.purity < other.first.purity;
             }
         };
-        static std::priority_queue<struct SplitDetails> findBestSplits(
-            std::shared_ptr<ValueNode> src,
+        static std::priority_queue<struct DTree::Training::SplitDetails> findBestSplits(
+            std::shared_ptr<DTree::ValueNode> src,
             double(*evaluationFunction)(std::vector<const DataFrame*>),
             unsigned int samples,
-            bool continuousInts = false,
-            bool useGreaterThan = false
+            bool continuousInts,
+            bool useGreaterThan
         );
         enum LimitingFactor { depth, decisions, leaves };
         static void train(
@@ -167,19 +164,39 @@ public:
         bool useGreaterThan = false
     );
 
+    std::string classify(const DataFrame*);
+    std::vector<std::string> classify(const std::vector<const DataFrame*>&);
+    bool test(const DataFrame*);
+    double test(const std::vector<const DataFrame*>&);
+
     DTree(std::vector<DataFrame> data_points);
-    DTree(std::vector<DataFrame> data_points, std::initializer_list<size_t> fields);
+    DTree(std::vector<DataFrame> data_points, std::vector<size_t> fields);
 
     enum printStyle { percent, size, address, none };
     Training training;
     printStyle print_style;
     std::weak_ptr<Node> head;
-    const std::vector<size_t> fields;
-private:
+    std::vector<size_t> fields;
+protected:
+    DTree();
     static std::vector<size_t> make_fields_arg(const std::vector<DataFrame>& data_points);
-
     std::set<std::shared_ptr<Node>> nodes;
+private:
     std::vector<DataFrame> data;
+};
+
+// Same as a DTree, but it doesn't own the DataFrames it has. Primarily for use in conjunction
+// with a DForest, as the DForest owns the data, and passes non-owining references instead of
+// making possbily hundreds of copies of the data. Note that because DTree::data is private, 
+// DTree_Weak::data_weak is provided instead.
+class DTree_Weak : public DTree {
+public:
+    DTree_Weak(std::vector<const DataFrame*> data_points);
+    DTree_Weak(std::vector<const DataFrame*> data_points, std::vector<size_t> fields);
+protected:
+    static std::vector<size_t> make_fields_arg(const std::vector<const DataFrame*>& data_points);
+private:
+    std::vector<const DataFrame*> data_weak;
 };
 
 std::ostream& operator<<(std::ostream& os, const DTree::Training::SplitDetails& sd);

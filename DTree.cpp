@@ -148,9 +148,8 @@ std::vector<size_t> DTree::make_fields_arg(const std::vector<DataFrame>& data_po
 	}
 	return fields;
 }
-
+DTree::DTree() {};
 DTree::DTree(std::vector<DataFrame> data_points) : fields(make_fields_arg(data_points)), training() {
-
 	// take ownership of the vector forcibly
 	this->data = std::move(data_points);
 	
@@ -168,7 +167,7 @@ DTree::DTree(std::vector<DataFrame> data_points) : fields(make_fields_arg(data_p
 	this->head = new_node;
 	this->nodes = { new_node };
 }
-DTree::DTree(std::vector<DataFrame> data_points, std::initializer_list<size_t> fields) : fields(fields), training() {
+DTree::DTree(std::vector<DataFrame> data_points, std::vector<size_t> fields) : fields(fields), training() {
 
 	// take ownership of the vector forcibly
 	this->data = std::move(data_points);
@@ -189,227 +188,227 @@ DTree::DTree(std::vector<DataFrame> data_points, std::initializer_list<size_t> f
 }
 
 std::string DTree::to_string() const {
-	std::stringstream out;
+    std::stringstream out;
 
-	const std::string HBEAM = std::string(reinterpret_cast<const char*>(u8"━"));
-	const std::string TBEAM = std::string(reinterpret_cast<const char*>(u8"┻"));
-	const std::string RDBEAM = std::string(reinterpret_cast<const char*>(u8"┓"));
-	const std::string LDBEAM = std::string(reinterpret_cast<const char*>(u8"┏"));
-	const std::string RUBEAM = std::string(reinterpret_cast<const char*>(u8"┛"));
-	const std::string LUBEAM = std::string(reinterpret_cast<const char*>(u8"┗"));
+    const std::string HBEAM = std::string(reinterpret_cast<const char*>(u8"━"));
+    const std::string TBEAM = std::string(reinterpret_cast<const char*>(u8"┻"));
+    const std::string RDBEAM = std::string(reinterpret_cast<const char*>(u8"┓"));
+    const std::string LDBEAM = std::string(reinterpret_cast<const char*>(u8"┏"));
+    const std::string RUBEAM = std::string(reinterpret_cast<const char*>(u8"┛"));
+    const std::string LUBEAM = std::string(reinterpret_cast<const char*>(u8"┗"));
 
-	auto root = this->head.lock();
+    auto root = this->head.lock();
 
-	if (root == nullptr) {
-		out << "Empty tree" << std::endl;
-		return out.str();
-	}
+    if (root == nullptr) {
+        out << "Empty tree" << std::endl;
+        return out.str();
+    }
 
-	// Calculate height of tree
-	int height = 0;
-	std::queue<std::pair<std::shared_ptr<Node>, int>> q;
-	q.push({ root, 0 });
+    // Calculate height of tree
+    int height = 0;
+    std::queue<std::pair<std::shared_ptr<Node>, int>> q;
+    q.push({ root, 0 });
 
-	while (!q.empty()) {
-		auto [node, level] = q.front();
-		q.pop();
+    while (!q.empty()) {
+        auto [node, level] = q.front();
+        q.pop();
 
-		height = std::max(height, level);
+        height = std::max(height, level);
 
-		if (auto left = node->left_child.lock()) {
-			q.push({ left, level + 1 });
-		}
+        if (auto left = node->left_child.lock()) {
+            q.push({ left, level + 1 });
+        }
 
-		if (auto right = node->right_child.lock()) {
-			q.push({ right, level + 1 });
-		}
-	}
+        if (auto right = node->right_child.lock()) {
+            q.push({ right, level + 1 });
+        }
+    }
 
-	// Map to store string representation of each node
-	std::unordered_map<Node*, std::string> nodeStrings;
+    // Map to store string representation of each node
+    std::unordered_map<Node*, std::string> nodeStrings;
 
-	// Map to store position information for each node
-	std::unordered_map<Node*, int> xPositions;
+    // Map to store position information for each node
+    std::unordered_map<Node*, int> xPositions;
 
-	// Calculate widths at each level and node positions
-	std::vector<std::vector<std::shared_ptr<Node>>> levels(height + 1);
-	q.push({ root, 0 });
-	int maxNodeWidth = 0;
+    // Calculate widths at each level and node positions
+    std::vector<std::vector<std::shared_ptr<Node>>> levels(height + 1);
+    q.push({ root, 0 });
+    int maxNodeWidth = 0;
 
-	while (!q.empty()) {
-		auto [node, level] = q.front();
-		q.pop();
+    while (!q.empty()) {
+        auto [node, level] = q.front();
+        q.pop();
 
-		// Store node at its level
-		levels[level].push_back(node);
+        // Store node at its level
+        levels[level].push_back(node);
 
-		// Calculate string representation and update max width
-		std::string nodeStr = node->toString();
+        // Calculate string representation and update max width
+        std::string nodeStr = node->toString();
 
-		nodeStrings[node.get()] = nodeStr;
-		maxNodeWidth = std::max(maxNodeWidth, static_cast<int>(nodeStr.length()));
+        nodeStrings[node.get()] = nodeStr;
+        maxNodeWidth = std::max(maxNodeWidth, static_cast<int>(nodeStr.length()));
 
-		if (auto left = node->left_child.lock()) {
-			q.push({ left, level + 1 });
-		}
+        if (auto left = node->left_child.lock()) {
+            q.push({ left, level + 1 });
+        }
 
-		if (auto right = node->right_child.lock()) {
-			q.push({ right, level + 1 });
-		}
-	}
+        if (auto right = node->right_child.lock()) {
+            q.push({ right, level + 1 });
+        }
+    }
 
-	// Make sure we have at least 1 space between nodes
-	int nodeSpacing = maxNodeWidth + 1;
+    // Make sure we have at least 1 space between nodes
+    int nodeSpacing = maxNodeWidth + 1;
 
-	// Calculate positions for each node based on its index in a perfect binary tree
-	for (int level = 0; level <= height; level++) {
-		int levelWidth = pow(2, level);
-		int fullWidth = pow(2, height) * nodeSpacing;
-		int gap = fullWidth / levelWidth;
+    // Calculate positions for each node based on its index in a perfect binary tree
+    for (int level = 0; level <= height; level++) {
+        int levelWidth = pow(2, level);
+        int fullWidth = pow(2, height) * nodeSpacing;
+        int gap = fullWidth / levelWidth;
 
-		for (size_t i = 0; i < levels[level].size(); i++) {
-			auto node = levels[level][i];
+        for (size_t i = 0; i < levels[level].size(); i++) {
+            auto node = levels[level][i];
 
-			// Find position in perfect tree
-			size_t pos = 0;
-			std::shared_ptr<Node> curr = node;
-			std::vector<bool> path;
+            // Find position in perfect tree
+            size_t pos = 0;
+            std::shared_ptr<Node> curr = node;
+            std::vector<bool> path;
 
-			// Trace path to root
-			while (auto p = curr->parent.lock()) {
-				bool isRight = (p->right_child.lock().get() == curr.get());
-				path.push_back(isRight);
-				curr = p;
-			}
+            // Trace path to root
+            while (auto p = curr->parent.lock()) {
+                bool isRight = (p->right_child.lock().get() == curr.get());
+                path.push_back(isRight);
+                curr = p;
+            }
 
-			// Calculate position from path
-			size_t idx = 0;
-			for (auto it = path.rbegin(); it != path.rend(); ++it) {
-				idx = idx * 2 + (*it ? 1 : 0);
-			}
+            // Calculate position from path
+            size_t idx = 0;
+            for (auto it = path.rbegin(); it != path.rend(); ++it) {
+                idx = idx * 2 + (*it ? 1 : 0);
+            }
 
-			// Store position
-			xPositions[node.get()] = (idx + 1) * gap - gap / 2;
-		}
-	}
+            // Store position
+            xPositions[node.get()] = (idx + 1) * gap - gap / 2;
+        }
+    }
 
-	// Make sure the tree is wide enough
-	int totalWidth = pow(2, height) * nodeSpacing;
+    // Make sure the tree is wide enough
+    int totalWidth = pow(2, height) * nodeSpacing;
 
-	// Print the tree level by level
-	for (int level = 0; level <= height; level++) {
-		// Print node values
-		std::string nodeLine(totalWidth, ' ');
+    // Print the tree level by level
+    for (int level = 0; level <= height; level++) {
+        // Print node values
+        std::string nodeLine(totalWidth, ' ');
 
-		for (auto& node : levels[level]) {
-			std::string nodeStr = nodeStrings[node.get()];
-			int centerPos = xPositions[node.get()];
-			int startPos = centerPos - nodeStr.length() / 2;
+        for (auto& node : levels[level]) {
+            std::string nodeStr = nodeStrings[node.get()];
+            int centerPos = xPositions[node.get()];
+            int startPos = centerPos - nodeStr.length() / 2;
 
-			// Make sure we don't go out of bounds
-			if (startPos >= 0 && startPos + nodeStr.length() <= nodeLine.length()) {
-				for (size_t i = 0; i < nodeStr.length(); i++) {
-					nodeLine[startPos + i] = nodeStr[i];
-				}
-			}
-		}
+            // Make sure we don't go out of bounds
+            if (startPos >= 0 && startPos + nodeStr.length() <= nodeLine.length()) {
+                for (size_t i = 0; i < nodeStr.length(); i++) {
+                    nodeLine[startPos + i] = nodeStr[i];
+                }
+            }
+        }
 
-		out << nodeLine << std::endl;
+        out << nodeLine << std::endl;
 
-		// Skip connection lines for the last level
-		if (level == height) {
-			break;
-		}
+        // Skip connection lines for the last level
+        if (level == height) {
+            break;
+        }
 
-		// Print connection lines
-		std::vector<std::string> connectorLine(totalWidth, " ");
+        // Print connection lines
+        std::vector<std::string> connectorLine(totalWidth, " ");
 
-		for (auto& node : levels[level]) {
-			int nodePos = xPositions[node.get()];
-			auto leftChild = node->left_child.lock();
-			auto rightChild = node->right_child.lock();
+        for (auto& node : levels[level]) {
+            int nodePos = xPositions[node.get()];
+            auto leftChild = node->left_child.lock();
+            auto rightChild = node->right_child.lock();
 
-			if (leftChild && rightChild) {
-				int leftPos = xPositions[leftChild.get()];
-				int rightPos = xPositions[rightChild.get()];
+            if (leftChild && rightChild) {
+                int leftPos = xPositions[leftChild.get()];
+                int rightPos = xPositions[rightChild.get()];
 
-				// Safety checks
-				if (nodePos >= 0 && nodePos < connectorLine.size() &&
-					leftPos >= 0 && leftPos < connectorLine.size() &&
-					rightPos >= 0 && rightPos < connectorLine.size()) {
+                // Safety checks
+                if (nodePos >= 0 && nodePos < connectorLine.size() &&
+                    leftPos >= 0 && leftPos < connectorLine.size() &&
+                    rightPos >= 0 && rightPos < connectorLine.size()) {
 
-					connectorLine[leftPos] = LDBEAM;
-					connectorLine[rightPos] = RDBEAM;
+                    connectorLine[leftPos] = LDBEAM;
+                    connectorLine[rightPos] = RDBEAM;
 
-					for (int i = leftPos + 1; i < nodePos; i++) {
-						if (i >= 0 && i < connectorLine.size()) {
-							connectorLine[i] = HBEAM;
-						}
-					}
+                    for (int i = leftPos + 1; i < nodePos; i++) {
+                        if (i >= 0 && i < connectorLine.size()) {
+                            connectorLine[i] = HBEAM;
+                        }
+                    }
 
-					for (int i = nodePos + 1; i < rightPos; i++) {
-						if (i >= 0 && i < connectorLine.size()) {
-							connectorLine[i] = HBEAM;
-						}
-					}
+                    for (int i = nodePos + 1; i < rightPos; i++) {
+                        if (i >= 0 && i < connectorLine.size()) {
+                            connectorLine[i] = HBEAM;
+                        }
+                    }
 
-					connectorLine[nodePos] = TBEAM;
-				}
-			}
-			else if (leftChild) {
-				int leftPos = xPositions[leftChild.get()];
+                    connectorLine[nodePos] = TBEAM;
+                }
+            }
+            else if (leftChild) {
+                int leftPos = xPositions[leftChild.get()];
 
-				// Safety checks
-				if (nodePos >= 0 && nodePos < connectorLine.size() &&
-					leftPos >= 0 && leftPos < connectorLine.size()) {
+                // Safety checks
+                if (nodePos >= 0 && nodePos < connectorLine.size() &&
+                    leftPos >= 0 && leftPos < connectorLine.size()) {
 
-					connectorLine[leftPos] = LDBEAM;
+                    connectorLine[leftPos] = LDBEAM;
 
-					for (int i = leftPos + 1; i < nodePos; i++) {
-						if (i >= 0 && i < connectorLine.size()) {
-							connectorLine[i] = HBEAM;
-						}
-					}
+                    for (int i = leftPos + 1; i < nodePos; i++) {
+                        if (i >= 0 && i < connectorLine.size()) {
+                            connectorLine[i] = HBEAM;
+                        }
+                    }
 
-					connectorLine[nodePos] = RUBEAM;
-				}
-			}
-			else if (rightChild) {
-				int rightPos = xPositions[rightChild.get()];
+                    connectorLine[nodePos] = RUBEAM;
+                }
+            }
+            else if (rightChild) {
+                int rightPos = xPositions[rightChild.get()];
 
-				// Safety checks
-				if (nodePos >= 0 && nodePos < connectorLine.size() &&
-					rightPos >= 0 && rightPos < connectorLine.size()) {
+                // Safety checks
+                if (nodePos >= 0 && nodePos < connectorLine.size() &&
+                    rightPos >= 0 && rightPos < connectorLine.size()) {
 
-					connectorLine[rightPos] = RDBEAM;
+                    connectorLine[rightPos] = RDBEAM;
 
-					for (int i = nodePos; i < rightPos; i++) {
-						if (i >= 0 && i < connectorLine.size()) {
-							connectorLine[i] = HBEAM;
-						}
-					}
+                    for (int i = nodePos; i < rightPos; i++) {
+                        if (i >= 0 && i < connectorLine.size()) {
+                            connectorLine[i] = HBEAM;
+                        }
+                    }
 
-					connectorLine[nodePos] = LUBEAM;
-				}
-			}
-		}
+                    connectorLine[nodePos] = LUBEAM;
+                }
+            }
+        }
 
-		// Print vertical connectors
-		for (auto& node : levels[level]) {
-			if (node->left_child.lock() || node->right_child.lock()) {
-				int pos = xPositions[node.get()];
-				if (pos >= 0 && pos < connectorLine.size()) {
-					if (connectorLine[pos] == LDBEAM || connectorLine[pos] == RDBEAM) {
-						connectorLine[pos] = TBEAM;
-					}
-				}
-			}
-		}
-		std::ostringstream imploded;
-		std::copy(connectorLine.begin(), connectorLine.end(), std::ostream_iterator<std::string>(imploded, ""));
-		out << imploded.str() << std::endl;
-	}
-	return out.str();
+        // Print vertical connectors
+        for (auto& node : levels[level]) {
+            if (node->left_child.lock() || node->right_child.lock()) {
+                int pos = xPositions[node.get()];
+                if (pos >= 0 && pos < connectorLine.size()) {
+                    if (connectorLine[pos] == LDBEAM || connectorLine[pos] == RDBEAM) {
+                        connectorLine[pos] = TBEAM;
+                    }
+                }
+            }
+        }
+        std::ostringstream imploded;
+        std::copy(connectorLine.begin(), connectorLine.end(), std::ostream_iterator<std::string>(imploded, ""));
+        out << imploded.str() << std::endl;
+    }
+    return out.str();
 }
 void DTree::split_leaf(std::shared_ptr<ValueNode> leaf, size_t dataFrameField, DTree::DecisionNode::comparisonType comparison, std::variant<int, float> compareAgainst) {
 	std::shared_ptr<DecisionNode> new_decision_node = std::make_shared<DecisionNode>((DTree&)*this, dataFrameField, comparison, compareAgainst);
@@ -758,7 +757,7 @@ double DTree::Training::evaluateSplit(
         }
     }
 
-    if (data_a.size() < 1 || data_b.size()) {
+    if (data_a.size() < 1 || data_b.size() < 1) {
         return 0.0;
     }
 
@@ -782,7 +781,7 @@ static std::ostream& operator<<(std::ostream& os, const DTree::Training::SplitDe
     return os;
 }
 
-// This function, based on some preliminary profiling runs 2.3x faster due to utilising OpenMP
+// This function, based on some preliminary profiling runs significantly faster due to utilising OpenMP
 // to multithread the main for loop. And it was so much easier to make work than python 
 // multithreading! Yipee!
 std::priority_queue<struct DTree::Training::SplitDetails> DTree::Training::findBestSplits(
@@ -799,33 +798,33 @@ std::priority_queue<struct DTree::Training::SplitDetails> DTree::Training::findB
 #ifdef USE_OPENMP
     // Create thread-local priority queues to avoid race conditions
     std::vector<std::priority_queue<struct SplitDetails>> thread_queues(omp_get_max_threads());
-#else
-    std::vector<std::priority_queue<struct SplitDetails>> thread_queues(1);
-#endif
-
-#ifdef USE_OPENMP
     // Parallelize the loop over field indices
 #pragma omp parallel for
-#endif
     //for (auto field_index : src->tree.fields) {
     for (int field_index_index = 0; field_index_index < static_cast<int>(src->tree.fields.size()); field_index_index++) {
         size_t field_index = src->tree.fields[field_index_index];
         // Get the thread-local queue for this thread
 
-#ifdef USE_OPENMP
         int thread_id = omp_get_thread_num();
 #else
+    // Create thread-local priority queues to avoid race conditions
+    std::vector<std::priority_queue<struct SplitDetails>> thread_queues(1);
+
+    for (auto field_index : src->tree.fields) {
         int thread_id = 0;
 #endif
 
         std::priority_queue<struct SplitDetails>&local_queue = thread_queues[thread_id];
 
-        std::vector<const DataFrame*> temp_copy = data;
         const DataFrame* min_element = nullptr;
         const DataFrame* max_element = nullptr;
-        for (const DataFrame* elem : temp_copy) {
-            if (min_element == nullptr || elem->fields[field_index] < min_element->fields[field_index]) { min_element = elem; }
-            if (max_element == nullptr || elem->fields[field_index] > min_element->fields[field_index]) { max_element = elem; }
+        for (const DataFrame* elem : data) {
+            if (min_element == nullptr || elem->fields[field_index] < min_element->fields[field_index]) { 
+                min_element = elem;
+            }
+            if (max_element == nullptr || elem->fields[field_index] > min_element->fields[field_index]) { 
+                max_element = elem; 
+            }
         }
 
         if (min_element == max_element) {
@@ -840,7 +839,7 @@ std::priority_queue<struct DTree::Training::SplitDetails> DTree::Training::findB
             continue;
         }
 
-        if (!continuousInts && std::holds_alternative<int>(temp_copy[0]->fields[field_index])) {
+        if (!continuousInts && std::holds_alternative<int>(data[0]->fields[field_index])) {
             // Ignore the samples parameter - we'll just check all the value we know about.
             for (int j = std::get<int>(min_element->fields[field_index]); j <= std::get<int>(max_element->fields[field_index]); j++) {
                 auto purityGain = evaluateSplit(
@@ -861,7 +860,7 @@ std::priority_queue<struct DTree::Training::SplitDetails> DTree::Training::findB
             }
         }
         else {
-            if (std::holds_alternative<int>(temp_copy[0]->fields[field_index])) {
+            if (std::holds_alternative<int>(data[0]->fields[field_index])) {
                 // Try to find the right number of samples, but might not find that many
                 int diff = std::get<int>(max_element->fields[field_index]) - std::get<int>(min_element->fields[field_index]);
                 std::set<int> samples_set;
@@ -905,7 +904,7 @@ std::priority_queue<struct DTree::Training::SplitDetails> DTree::Training::findB
                     }
                 }
             }
-            else if (std::holds_alternative<float>(temp_copy[0]->fields[field_index])) {
+            else if (std::holds_alternative<float>(data[0]->fields[field_index])) {
                 float diff = std::get<float>(max_element->fields[field_index]) - std::get<float>(min_element->fields[field_index]);
                 if (useGreaterThan) {
                     for (unsigned int j = 0; j < samples; j++) {
@@ -979,7 +978,7 @@ void DTree::Training::train(
                     DEBUG_LOG("Prevented splitting small leaf." << std::endl);
                 }
                 else {
-                    auto best_splits = DTree::Training::findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
+                    auto best_splits = tree.training.findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
                     DEBUG_LOG("Evaluated " << best_splits.size() << " splits on node @ " << leaf.lock().get() << std::endl);
                     splits.push({ best_splits.top(), leaf });
                 }
@@ -1015,7 +1014,7 @@ void DTree::Training::train(
                     DEBUG_LOG("Prevented splitting small leaf." << std::endl);
                 }
                 else {
-                    auto best_splits = DTree::Training::findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
+                    auto best_splits = tree.training.findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
                     DEBUG_LOG("Evaluated " << best_splits.size() << " splits on node @ " << leaf.lock().get() << std::endl);
                     splits.push({ best_splits.top(), leaf });
                 }
@@ -1051,7 +1050,7 @@ void DTree::Training::train(
                     DEBUG_LOG("Prevented splitting small leaf." << std::endl);
                 }
                 else {
-                    auto best_splits = DTree::Training::findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
+                    auto best_splits = tree.training.findBestSplits(leaf.lock(), evaluationFunction, samples, continuousInts, useGreaterThan);
                     DEBUG_LOG("Evaluated " << best_splits.size() << " splits on node @ " << leaf.lock().get() << std::endl);
                     splits.push({ best_splits.top(), leaf });
                 }
@@ -1102,3 +1101,82 @@ void DTree::train(
         useGreaterThan
     );
 }
+
+std::string DTree::classify(const DataFrame* df) {
+    std::shared_ptr<DTree::Node> cur = this->head.lock();
+    while (auto cur_dn = std::dynamic_pointer_cast<DTree::DecisionNode>(cur)) {
+        if (cur_dn->decide(df)) {
+            cur = cur_dn->left_child.lock();
+        }
+        else {
+            cur = cur_dn->right_child.lock();
+        }
+    }
+    std::shared_ptr<DTree::ValueNode> cur_vn = std::dynamic_pointer_cast<DTree::ValueNode>(cur);
+    return cur_vn->modeLabel();
+}
+std::vector<std::string> DTree::classify(const std::vector<const DataFrame*>& dfs) {
+    std::vector<std::string> ret = std::vector<std::string>();
+    ret.reserve(dfs.size());
+    for (const DataFrame* df : dfs) {
+        ret.push_back(this->classify(df));
+    }
+    return ret;
+}
+bool DTree::test(const DataFrame* df) {
+    return df->label == this->classify(df);
+}
+double DTree::test(const std::vector<const DataFrame*>& dfs) {
+    double correct = 0;
+    double incorrect = 0;
+    for (const DataFrame* df : dfs) {
+        if (this->test(df)) {
+            correct += 1.0;
+        }
+        else {
+            incorrect += 1.0;
+        }
+    }
+    return correct / (correct + incorrect);
+}
+
+std::vector<size_t> DTree_Weak::make_fields_arg(const std::vector<const DataFrame*>& data_points) {
+    auto fields = std::vector<size_t>();
+    fields.reserve(data_points[0]->fields.size());
+    for (size_t i = 0; i < data_points[0]->fields.size(); i++) {
+        fields.push_back(i);
+    }
+    return fields;
+}
+DTree_Weak::DTree_Weak(std::vector<const DataFrame*> data_points) : DTree(), data_weak(data_points) {
+    this->data_weak = data_points;
+    this->training = DTree_Weak::Training();
+
+    this->fields = make_fields_arg(data_points);
+
+    this->nodes.clear();
+    
+    // make the node and move the vector of pointers into it. We don't own it anymore.
+    auto new_node = std::make_shared<ValueNode>(*this, data_weak);
+
+    // finish initialising the tree
+    this->head = new_node;
+    this->nodes = { new_node };
+}
+DTree_Weak::DTree_Weak(std::vector<const DataFrame*> data_points, std::vector<size_t> fields) : DTree() {
+    this->data_weak = data_points;
+    this->training = DTree_Weak::Training();
+    
+    this->fields = fields;
+    this->nodes.clear();
+
+
+
+    // make the node and move the vector of pointers into it. We don't own it anymore.
+    auto new_node = std::make_shared<ValueNode>(*this, data_weak);
+
+    // finish initialising the tree
+    this->head = new_node;
+    this->nodes = { new_node };
+}
+

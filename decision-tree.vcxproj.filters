@@ -30,9 +30,24 @@
     <ClCompile Include="DTree.cpp">
       <Filter>C/C++\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="utility.cpp">
+      <Filter>C/C++\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DForest.cpp">
+      <Filter>C/C++\Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DTree.h">
+      <Filter>C/C++\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DebugLogger.hpp">
+      <Filter>C/C++\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="utility.h">
+      <Filter>C/C++\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DForest.h">
       <Filter>C/C++\Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -52,7 +67,6 @@
     <None Include="python\reference_implementation.py">
       <Filter>Python</Filter>
     </None>
-    <None Include="packages.config" />
     <None Include="csv_groupcol.py">
       <Filter>Python</Filter>
     </None>

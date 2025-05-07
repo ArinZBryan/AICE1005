@@ -15,8 +15,8 @@ std::vector<std::string> strtokstr(std::string s, char sep) {
 }
 
 double getRandomDouble() {
-    static std::random_device rd;  // Seed for the random number engine
-    static std::mt19937 gen(rd()); // Mersenne Twister random number generator
-    static std::uniform_real_distribution<> dis(0.0, 1.0); // Uniform distribution between 0 and 1
+    static std::random_device rd; 
+    static std::mt19937 gen(rd());
+    static std::uniform_real_distribution dis(0.0, 1.0); 
     return dis(gen);
 }
